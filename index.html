@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>圆桌排座</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f1f5f9; color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+  }
+  [hidden] { display: none !important; }
+  .app { display: flex; min-height: 100vh; align-items: stretch; }
+
+  /* ---------- 右上角登录 ---------- */
+  .topbar {
+    position: fixed; top: 14px; right: 18px; z-index: 60;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .btn-login {
+    background: #fff; border: 1px solid #cbd5e1; color: #334155;
+    border-radius: 10px; padding: 8px 18px; font-size: 14px; cursor: pointer;
+    box-shadow: 0 1px 3px rgba(64, 151, 129, 0.08); font-family: inherit;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .btn-login:hover { background: #f8fafc; }
+  .btn-login.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .btn-login.on:hover { background: #1d4ed8; }
+  .role-badge {
+    font-size: 12px; color: #64748b; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 12px;
+  }
+
+  /* ---------- 左侧面板 ---------- */
+  .panel {
+    width: 380px; flex-shrink: 0;
+    background: #fff; border-right: 1px solid #e2e8f0;
+    padding: 24px 20px; display: flex; flex-direction: column; gap: 16px;
+    position: sticky; top: 0; height: 100vh; overflow: hidden;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; }
+  .brand h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+  .brand span { font-size: 12px; color: #94a3b8; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; font-weight: 600; color: #334155; }
+  .field .desc { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+  .field .desc code { background: #f1f5f9; padding: 0 3px; border-radius: 3px; }
+
+  input[type="text"], input[type="password"], textarea {
+    width: 100%; border: 1px solid #cbd5e1; border-radius: 10px;
+    padding: 10px 12px; font-size: 14px; font-family: inherit;
+    background: #fff; color: #0f172a; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+    border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+  }
+  textarea { resize: vertical; font-size: 13px; }
+  #tableInfo { min-height: 108px; line-height: 1.7; }
+
+  /* 带行号的名单框 */
+  .roster-wrap {
+    display: flex; align-items: stretch;
+    flex: 0 0 250px; height: 250px; max-height: 250px; min-height: 0;
+    border: 1px solid #cbd5e1; border-radius: 10px; background: #fff;
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .roster-wrap:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  .line-nums {
+    flex: 0 0 auto; min-width: 38px;
+    padding: 10px 8px; text-align: right; overflow: hidden; user-select: none;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13px; color: #94a3b8; background: #f8fafc;
+    border-right: 1px solid #e2e8f0;
+  }
+  .line-nums > div { height: 22px; line-height: 22px; }
+  #roster {
+    border: none; border-radius: 0; box-shadow: none !important;
+    flex: 1; width: 0; height: 250px; min-height: 0; max-height: 250px;
+    line-height: 22px; font-size: 13px;
+    padding: 10px 12px; resize: none; overflow-y: auto;
+  }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, .file-btn {
+    font-family: inherit; font-size: 14px; border-radius: 10px; border: 1px solid transparent;
+    padding: 10px 16px; cursor: pointer; transition: filter .15s, background .15s;
+    white-space: nowrap;
+  }
+  button:active, .file-btn:active { filter: brightness(.95); }
+  .btn-primary { background: #2563eb; color: #fff; width: 100%; font-weight: 600; padding: 12px; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-ghost { background: #f1f5f9; color: #334155; border-color: #e2e8f0; }
+  .btn-ghost:hover { background: #e2e8f0; }
+  .file-btn { display: inline-flex; align-items: center; align-self: flex-start; font-size: 13px; padding: 8px 14px; }
+  .file-btn input { display: none; }
+  .error {
+    background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.6;
+    display: none;
+  }
+  .error.show { display: block; }
+
+  /* ---------- 右侧结果 ---------- */
+  .result { flex: 1; padding: 24px; min-width: 0; }
+  .summary {
+    font-size: 13px; color: #64748b; margin-bottom: 16px;
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+    /* 右上角固定徽标（管理员/访客 + 退出）会压住「定位」按钮，
+       这里按徽标实际宽度动态预留右侧空间，由 JS 写入 --topbar-space */
+    padding-right: calc(var(--topbar-space, 96px) + 12px);
+  }
+  .summary b { color: #0f172a; }
+  .legend { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; background: #fffbeb; border: 2px solid #f59e0b; }
+
+  .tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 16px; }
+  .table-card {
+    background: #fff; border-radius: 16px; padding: 14px 14px 8px;
+    box-shadow: 0 1px 3px rgba(15,23,42,.07), 0 1px 2px rgba(15,23,42,.04);
+  }
+  .table-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 4px; flex-wrap: wrap; }
+  .badge { font-size: 15px; font-weight: 700; color: #1e293b; }
+  .sub { font-size: 12px; color: #94a3b8; }
+  .remark {
+    font-size: 12px; color: #475569; background: #f1f5f9;
+    padding: 2px 9px; border-radius: 999px; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .stage-wrap { position: relative; width: 100%; max-width: 340px; margin: 0 auto; overflow: hidden; }
+  .stage { position: absolute; top: 0; left: 0; width: 340px; height: 340px; transform-origin: top left; }
+
+  .table-center {
+    position: absolute; transform: translate(-50%, -50%);
+    border-radius: 50%; background: #f8fafc; border: 2px dashed #e2e8f0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #94a3b8; padding: 4px; text-align: center;
+  }
+  .table-center .tno { font-size: 28px; font-weight: 700; color: #64748b; line-height: 1; }
+  .table-center .tsub { font-size: 11px; margin-top: 2px; }
+
+  .seat {
+    position: absolute; transform: translate(-50%, -50%);
+    background: #fff; border: 1.5px solid #cbd5e1; border-radius: 9px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; user-select: none; z-index: 2; overflow: hidden;
+    padding: 1px 2px;
+    transition: border-color .12s, background .12s, box-shadow .12s;
+    scroll-margin-top: 72px;
+  }
+  .seat:hover { border-color: #94a3b8; }
+  .seat .nm, .seat .rm {
+    max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.15; text-align: center;
+  }
+  .seat .nm { color: #1e293b; font-weight: 500; }
+  .seat .rm { color: #64748b; }
+  .seat.empty { background: #f8fafc; border-style: dashed; }
+  .seat.main { border-color: #f59e0b; background: #fffbeb; }
+  .seat.sel { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 3px rgba(37,99,235,.2); }
+
+  /* 搜索定位高亮 */
+  .seat.found {
+    border-color: #dc2626 !important;
+    background: #fef2f2 !important;
+    z-index: 5;
+    animation: foundPulse .9s ease-in-out 3;
+  }
+  @keyframes foundPulse {
+    0%,100% { box-shadow: 0 0 0 4px rgba(220,38,38,.28); }
+    50%     { box-shadow: 0 0 0 10px rgba(220,38,38,.10); }
+  }
+
+  /* summary 里的搜索组 */
+  .search-box {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: auto;
+  }
+  .search-box input {
+    width: 150px; padding: 6px 10px; font-size: 13px;
+    border: 1px solid #cbd5e1; border-radius: 8px; outline: none;
+    font-family: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-box input:focus {
+    border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+  }
+  .search-box button {
+    padding: 6px 12px; font-size: 13px; border-radius: 8px;
+  }
+  .search-msg {
+    font-size: 12px; color: #b45309; max-width: 260px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .placeholder { text-align: center; color: #94a3b8; font-size: 14px; padding: 80px 20px; line-height: 1.8; }
+  .empty-nav { display: flex; justify-content: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+  .meeting-link {
+    display: inline-flex; align-items: center;
+    padding: 6px 10px; border: 1px solid #bfdbfe; border-radius: 8px;
+    color: #1d4ed8; background: #eff6ff;
+    text-decoration: none; font-size: 13px; white-space: nowrap;
+  }
+
+  .meeting-link:hover { background: #dbeafe; }
+
+  @media (max-width: 860px) {
+    .app { flex-direction: column; }
+    .panel { width: auto; height: auto; position: static; overflow: visible; border-right: none; border-bottom: 1px solid #e2e8f0; }
+    .result { padding: 16px; }
+    .summary { padding-right: 0; }
+  }
+  @media (min-width: 861px) and (max-height: 720px) {
+    .panel { overflow-y: auto; }
+  }
+  @media print {
+    .panel, .topbar { display: none !important; }
+    .app { display: block; }
+    .result { padding: 0; }
+    .tables { display: block; }
+    .table-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none; border: 1px solid #e2e8f0; margin-bottom: 12px; }
+    .summary { display: none; }
+    .stage { transform: none !important; }
+    .stage-wrap { height: 340px !important; max-width: 340px; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="role-badge" id="roleBadge"></span>
+  <button class="btn-login" id="btnLogout">退出</button>
+</div>
+
+<div class="app">
+  <aside class="panel" id="panel" hidden>
+    <div class="brand"><h1>圆桌排座</h1><span>v3</span></div>
+    <div class="field">
+      <label>每桌座位数</label>
+      <input type="text" id="seatConfig" value="8,10,6" spellcheck="false">
+      <div class="desc">逗号分隔，顺序即桌序。如 <code>8,10,6</code> = 1 号桌 8 座、2 号桌 10 座、3 号桌 6 座。每桌 2–15 座。</div>
+    </div>
+
+    <div class="field">
+      <label>桌号 / 备注</label>
+      <textarea id="tableInfo" spellcheck="false" placeholder="每行一桌，两列用逗号或制表符分隔：&#10;1,主桌&#10;2,女方亲友&#10;3,男方亲友"></textarea>
+      <div class="desc">第一列显示为桌号（如 <code>1</code> 或 <code>主桌</code>），第二列为备注，均显示在桌卡上。行序对应桌序；未填写的桌默认使用桌序号。</div>
+      <label class="file-btn btn-ghost">导入 txt<input type="file" id="tableFileInput" accept=".txt,text/plain"></label>
+    </div>
+
+    <div class="field">
+      <label>名单</label>
+      <div class="roster-wrap">
+        <div class="line-nums" id="lineNums"></div>
+        <textarea id="roster" spellcheck="false" placeholder="一行一人，格式「名字,备注」：&#10;张三,主宾&#10;李四&#10;王五,伴郎&#10;// 这是备注行，会被忽略&#10;*赵六,预留位"></textarea>
+      </div>
+      <div class="desc">
+        每行 <code>名字,备注</code>，备注可省略（最多各 5 字，超出自动缩小字号）。<br>
+        含 <code>//</code> 的行视为备注，整行忽略（不占座位）。<br>
+        行首加 <code>*</code> 表示占位但不显示内容，如 <code>*张三,预留</code>。<br>
+        座位顺序 = 名单顺序，先填满 1 号桌再填下一桌。
+      </div>
+      <label class="file-btn btn-ghost">导入 txt<input type="file" id="fileInput" accept=".txt,text/plain"></label>
+    </div>
+
+    <div class="error" id="errorBox"></div>
+
+    <button class="btn-primary" id="btnGen">生成排座（保存数据）</button>
+  </aside>
+
+  <main class="result" id="result">
+    <div class="placeholder">正在读取服务器数据…</div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var escapeHtml = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  // ---------- 登录会话 ----------
+  var AUTH_KEY = 'paizuo.auth';
+  function getAuth() {
+    try {
+      var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      if (a && a.token && (a.role === 'admin' || a.role === 'viewer')) return a;
+    } catch (e) {}
+    return null;
+  }
+  function clearAuth() { localStorage.removeItem(AUTH_KEY); }
+  function gotoLogin() {
+    location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+  }
+  function handle401() { clearAuth(); gotoLogin(); }
+  // 统一 API 请求：带 token，401 时清除会话并跳转登录页
+  function apiFetch(url, opts) {
+    opts = opts || {};
+    var a = getAuth();
+    var headers = opts.headers || {};
+    if (a) headers['X-Auth-Token'] = a.token;
+    opts.headers = headers;
+    return fetch(url, opts).then(function (r) {
+      if (r.status === 401) {
+        handle401();
+        var err = new Error('登录已失效');
+        err.authRedirected = true;
+        throw err;
+      }
+      return r;
+    });
+  }
+
+  var auth = getAuth();
+  if (!auth) { gotoLogin(); return; }
+  var isAdmin = auth.role === 'admin';
+
+  var state = {
+    tables: [],       // [{tableNo,label,remark,seatCount}]
+    slots: [],        // [{name,remark,hidden}] 全局座位顺序
+    rosterLines: [],  // 名单原始行模板
+    selected: null,   // {gi, el}
+    searchText: '',
+    snapSeats: '', snapTables: '', snapRoster: ''
+  };
+
+  // ---------- 解析 ----------
+  function parseSeatConfig(str) {
+    var nums = str.split(/[,，\s]+/)
+      .map(function (s) { return parseInt(s, 10); })
+      .filter(function (n) { return Number.isFinite(n) && n > 0; });
+    if (!nums.length) throw new Error('请先填写每桌座位数，例如 8,10,6');
+    if (nums.length > 30) throw new Error('桌数不能超过 30 桌');
+    nums.forEach(function (n) {
+      if (n < 2 || n > 15) throw new Error('座位数 ' + n + ' 不合理，应在 2–15 之间');
+    });
+    return nums;
+  }
+
+  function parseTableInfo(text) {
+    var rows = [];
+    if (!text) return rows;
+    text.split(/\r?\n/).forEach(function (line) {
+      var t = line.trim();
+      if (!t) return;
+      var parts = t.split(/[,，\t]/);
+      var no = (parts[0] || '').trim();
+      var remark = parts.slice(1).join('，').trim();
+      rows.push({ no: no, remark: remark });
+    });
+    return rows;
+  }
+
+  function parseRoster(text, totalSeats) {
+    var lines = text.split(/\r?\n/);
+    var slots = [];
+
+    lines.forEach(function (l) {
+      var t = l.trim();
+      if (!t) return;                       // 空行忽略
+      if (t.indexOf('//') >= 0) return;     // 备注行，整行忽略
+
+      var hidden = false;
+      if (t.charAt(0) === '*') {            // 行首 * = 占位但不显示
+        hidden = true;
+        t = t.slice(1).trim();
+      }
+      var parts = t.split(/[,，]/);
+      var name = (parts[0] || '').trim();
+      var remark = parts.slice(1).join('，').trim();
+      slots.push({ name: name, remark: remark, hidden: hidden });
+    });
+
+    if (!slots.length) throw new Error('名单是空的，请粘贴或导入名单');
+    if (slots.length > totalSeats) {
+      throw new Error('名单共 ' + slots.length + ' 条（含 * 占位），超过所有桌的座位总数 ' + totalSeats);
+    }
+    return { lines: lines, slots: slots };
+  }
+
+  // 槽位 → 名单文本行
+  function serializeSlot(s) {
+    if (!s) return '*';
+    var text = s.name || '';
+    if (s.remark) text += ',' + s.remark;
+    if (!text) return '*';                 // 空槽位也占位，避免顺序前移
+    return (s.hidden ? '*' : '') + text;
+  }
+
+  function rebuildRoster() {
+    var out = [];
+    var si = 0;
+    var lines = state.rosterLines;
+
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (!t) { out.push(''); continue; }
+      if (t.indexOf('//') >= 0) { out.push(lines[i]); continue; }
+      if (si < state.slots.length) {
+        out.push(serializeSlot(state.slots[si]));
+        si++;
+      }
+    }
+
+    var lastUsed = -1;
+    for (var k = 0; k < state.slots.length; k++) {
+      var s = state.slots[k];
+      if (s && (s.name || s.remark || s.hidden)) lastUsed = k;
+    }
+    while (si <= lastUsed) {
+      out.push(serializeSlot(state.slots[si]));
+      si++;
+    }
+    return out.join('\n');
+  }
+
+  function buildState() {
+    var seatText = $('seatConfig').value;
+    var tableText = $('tableInfo').value;
+    var rosterText = $('roster').value;
+
+    var seatCounts = parseSeatConfig(seatText);
+    var totalSeats = seatCounts.reduce(function (a, b) { return a + b; }, 0);
+    var roster = parseRoster(rosterText, totalSeats);
+    var infos = parseTableInfo(tableText);
+
+    state.rosterLines = roster.lines;
+    state.slots = roster.slots;
+    state.selected = null;
+    state.tables = seatCounts.map(function (count, i) {
+      var info = infos[i] || {};
+      return {
+        tableNo: i + 1,
+        label: (info.no || String(i + 1)),
+        remark: (info.remark || ''),
+        seatCount: count
+      };
+    });
+
+    state.snapSeats = seatText;
+    state.snapTables = tableText;
+    state.snapRoster = rosterText;
+  }
+
+  function inputsChanged() {
+    return $('seatConfig').value !== state.snapSeats ||
+           $('tableInfo').value !== state.snapTables ||
+           $('roster').value !== state.snapRoster;
+  }
+
+  function ensureSlots(n) {
+    while (state.slots.length < n) state.slots.push({ name: '', remark: '', hidden: false });
+  }
+
+  // ---------- 行号 ----------
+  function updateLineNums() {
+    var n = $('roster').value.split('\n').length;
+    var html = '';
+    for (var i = 1; i <= n; i++) html += '<div>' + i + '</div>';
+    $('lineNums').innerHTML = html;
+    $('lineNums').scrollTop = $('roster').scrollTop;
+  }
+
+  function syncRoster() {
+    var text = rebuildRoster();
+    $('roster').value = text;
+    state.rosterLines = text.split('\n');
+    state.snapRoster = text;
+    updateLineNums();
+  }
+
+  // ---------- 渲染 ----------
+  function render() {
+    var scrollY = window.scrollY;
+    var result = $('result');
+
+    if (!state.tables.length) {
+      result.innerHTML = '<div class="placeholder">' +
+        (isAdmin ? '在左侧填写座位数和名单，点击「生成排座（保存数据）」' : '暂无排座数据') +
+        '<div class="empty-nav"><a href="/huiyi.html" class="meeting-link">会议桌位</a>' +
+        '<a href="/print-zhuoqian.html" class="meeting-link">三折打印</a></div>' +
+        '</div>';
+      return;
+    }
+
+    var totalSeats = 0;
+    state.tables.forEach(function (t) { totalSeats += t.seatCount; });
+
+    var totalPeople = 0;
+    state.slots.forEach(function (s) { if (s && s.name) totalPeople++; });
+
+    result.innerHTML = '';
+        var summary = document.createElement('div');
+    summary.className = 'summary';
+    summary.innerHTML =
+      '<span>共 <b>' + state.tables.length + '</b> 桌</span>' +
+      '<span>座位 <b>' + totalSeats + '</b> 个</span>' +
+      '<span>已排 <b>' + totalPeople + '</b> 人</span>' +
+      '<span class="legend"><i class="dot"></i>橙色为主位（1 号座）</span>' +
+      '<span style="color:#94a3b8">' +
+        (isAdmin ? '点击两个座位交换；双击座位隐藏 / 显示（名单同步加 *）' : '只读查看') +
+      '</span>';
+	
+    // ---- 新增：搜索定位 ----
+    var searchBox = document.createElement('span');
+    searchBox.className = 'search-box';
+    searchBox.innerHTML =
+      '<a href="/index.html" class="meeting-link">餐位</a>' +
+      '<a href="/huiyi.html" class="meeting-link">会议桌位</a>' +
+      '<a href="/print-zhuoqian.html" class="meeting-link">三折打印</a>' +
+      '<input type="text" id="searchInput" placeholder="输入名字定位座位" autocomplete="off" ' +
+        'value="' + escapeHtml(state.searchText || '') + '">' +
+      '<button type="button" class="btn-ghost" id="searchBtn">定位</button>' +
+      '<span class="search-msg" id="searchMsg"></span>';
+    summary.appendChild(searchBox);
+
+    result.appendChild(summary);
+
+    // 绑定搜索事件（summary 刚进 DOM，可直接取元素）
+    (function bindSearch() {
+      var input = $('searchInput');
+      var btn = $('searchBtn');
+      var msg = $('searchMsg');
+
+      function run() {
+        var q = (input.value || '').trim();
+        state.searchText = q;
+        msg.textContent = '';
+        if (!q) return;
+
+        var hits = [];
+        state.slots.forEach(function (s, gi) {
+          if (s && s.name === q) hits.push(gi);
+        });
+
+        if (!hits.length) {
+          msg.textContent = '未找到「' + q + '」';
+          return;
+        }
+        if (hits.length > 1) {
+          msg.textContent = '有 ' + hits.length + ' 个「' + q + '」，已定位第一个';
+        }
+        locateSeat(hits[0]);
+      }
+
+      btn.addEventListener('click', run);
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); run(); }
+      });
+    })();
+
+    var grid = document.createElement('div');
+    grid.className = 'tables';
+    var offset = 0;
+    state.tables.forEach(function (tbl, ti) {
+      grid.appendChild(buildTableCard(tbl, ti, offset));
+      offset += tbl.seatCount;
+    });
+    result.appendChild(grid);
+
+    requestAnimationFrame(function () {
+      fitStages();
+      window.scrollTo(0, scrollY);
+    });
+  }
+
+  function buildTableCard(tbl, ti, offset) {
+    var N = 340, C = N / 2, n = tbl.seatCount;
+
+    // 座位宽高：优先保证 5 字名字 / 5 字备注完整显示
+    var IDEAL_W = 76, IDEAL_H = 44, R_LIMIT = 142;
+    var R = Math.max(96, IDEAL_W / (2 * Math.sin(Math.PI / n)));
+    if (R > R_LIMIT) R = R_LIMIT;
+
+    var cardW = Math.max(30, Math.min(IDEAL_W, 2 * R * Math.sin(Math.PI / n) * 0.94));
+    var cardH = Math.max(30, Math.min(IDEAL_H, cardW * 0.62));
+
+    var card = document.createElement('div');
+    card.className = 'table-card';
+
+    var label = tbl.label || String(tbl.tableNo);
+    var labelText = /^\d+$/.test(label) ? label + ' 号桌' : label;
+
+    var head = document.createElement('div');
+    head.className = 'table-head';
+    head.innerHTML =
+      '<span class="badge">' + escapeHtml(labelText) + '</span>' +
+      '<span class="sub">' + n + ' 座</span>' +
+      (tbl.remark ? '<span class="remark" title="' + escapeHtml(tbl.remark) + '">' + escapeHtml(tbl.remark) + '</span>' : '');
+    card.appendChild(head);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'stage-wrap';
+
+    var stage = document.createElement('div');
+    stage.className = 'stage';
+
+    // 中央桌
+    var tr = R * 0.62;
+    var center = document.createElement('div');
+    center.className = 'table-center';
+    center.style.width = (tr * 2) + 'px';
+    center.style.height = (tr * 2) + 'px';
+    center.style.left = C + 'px';
+    center.style.top = C + 'px';
+    if (/^\d+$/.test(label)) {
+      center.innerHTML = '<div class="tno">' + escapeHtml(label) + '</div><div class="tsub">号桌</div>';
+    } else {
+      center.innerHTML = '<div class="tno" style="font-size:15px;word-break:break-all;line-height:1.2">' +
+        escapeHtml(label) + '</div>';
+    }
+    stage.appendChild(center);
+
+    // 座位
+    var step = 2 * Math.PI / n;
+    for (var i = 0; i < n; i++) {
+      var ang;
+      if (i === 0) {
+        ang = -Math.PI / 2;                          // 主位：正上方
+      } else if (i % 2 === 1) {
+        ang = -Math.PI / 2 - ((i + 1) / 2) * step;   // 左：2、4、6…
+      } else {
+        ang = -Math.PI / 2 + (i / 2) * step;         // 右：3、5、7…
+      }
+      var x = C + R * Math.cos(ang);
+      var y = C + R * Math.sin(ang);
+
+      var gi = offset + i;
+      var slot = state.slots[gi] || { name: '', remark: '', hidden: false };
+      var shownName = slot.hidden ? '' : (slot.name || '');
+      var shownRemark = slot.hidden ? '' : (slot.remark || '');
+
+      var nameLen = Math.max(1, shownName.length || 1);
+      var rmLen = Math.max(1, shownRemark.length || 1);
+      var nmFs = Math.min(13, Math.max(8, Math.floor((cardW - 8) / nameLen)));
+      var rmFs = Math.min(10, Math.max(7, Math.floor((cardW - 8) / rmLen)));
+
+      var el = document.createElement('div');
+      el.className = 'seat' + (shownName ? '' : ' empty') + (i === 0 ? ' main' : '');
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.style.width = cardW + 'px';
+      el.style.height = cardH + 'px';
+      el.dataset.gi = gi;
+      el.title = '座位 ' + (i + 1);
+
+      var inner = '';
+      if (shownName) {
+        inner += '<span class="nm" style="font-size:' + nmFs + 'px">' + escapeHtml(shownName) + '</span>';
+        if (shownRemark) {
+          inner += '<span class="rm" style="font-size:' + rmFs + 'px">' + escapeHtml(shownRemark) + '</span>';
+        }
+      }
+      el.innerHTML = inner;
+
+      el.addEventListener('click', onSeatClick);
+      el.addEventListener('dblclick', onSeatDblClick);
+
+      stage.appendChild(el);
+    }
+
+    wrap.appendChild(stage);
+    card.appendChild(wrap);
+    return card;
+  }
+
+  function fitStages() {
+    var wraps = document.querySelectorAll('.stage-wrap');
+    wraps.forEach(function (wrap) {
+      var stage = wrap.querySelector('.stage');
+      if (!stage) return;
+      var avail = wrap.clientWidth;
+      if (avail <= 0) return;
+      var s = Math.min(1, avail / 340);
+      stage.style.transform = 'scale(' + s + ')';
+      wrap.style.height = Math.ceil(340 * s) + 'px';
+    });
+  }
+
+    // 根据全局座位序号定位并高亮
+  function locateSeat(gi) {
+    var el = document.querySelector('.seat[data-gi="' + gi + '"]');
+    if (!el) return;
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // 移除其它残留高亮，避免多次搜索叠加
+    document.querySelectorAll('.seat.found').forEach(function (n) {
+      n.classList.remove('found');
+    });
+    // 触发重绘后再加，保证动画能重新播放
+    void el.offsetWidth;
+    el.classList.add('found');
+
+    clearTimeout(locateSeat._t);
+    locateSeat._t = setTimeout(function () {
+      el.classList.remove('found');
+    }, 3000);
+  }
+
+  // ---------- 座位交互 ----------
+  function onSeatClick(e) {
+    if (!isAdmin) return;
+    if (inputsChanged()) {
+      showError('名单 / 配置已被修改，请先点击「生成排座（保存数据）」');
+      return;
+    }
+
+    var el = e.currentTarget;
+    var gi = +el.dataset.gi;
+
+    if (!state.selected) {
+      state.selected = { gi: gi, el: el };
+      el.classList.add('sel');
+      return;
+    }
+
+    var prev = state.selected;
+    if (prev.gi === gi) {
+      el.classList.remove('sel');
+      state.selected = null;
+      return;
+    }
+
+    ensureSlots(Math.max(prev.gi, gi) + 1);
+    var tmp = state.slots[prev.gi];
+    state.slots[prev.gi] = state.slots[gi];
+    state.slots[gi] = tmp;
+
+    state.selected = null;
+    syncRoster();
+    render();
+    saveCurrentState();
+  }
+
+  function onSeatDblClick(e) {
+    if (!isAdmin) return;
+    e.stopPropagation();
+    if (inputsChanged()) {
+      showError('名单 / 配置已被修改，请先点击「生成排座（保存数据）」');
+      return;
+    }
+
+    var el = e.currentTarget;
+    var gi = +el.dataset.gi;
+    ensureSlots(gi + 1);
+
+    var slot = state.slots[gi];
+    if (!slot || !slot.name) return;   // 空座位不处理
+
+    slot.hidden = !slot.hidden;        // 隐藏 ↔ 显示（名单同步加 / 去 *）
+
+    state.selected = null;
+    syncRoster();
+    render();
+    saveCurrentState();
+  }
+
+  // ---------- 生成 ----------
+  function saveCurrentState() {
+    if (!isAdmin) return;
+
+    apiFetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        seats: $('seatConfig').value,
+        tables: $('tableInfo').value,
+        roster: $('roster').value
+      })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) {
+          showError(res.msg || '保存失败');
+        }
+      })
+      .catch(function (err) {
+        if (err && err.authRedirected) return;
+        showError('保存失败：无法连接服务器');
+      });
+  }
+
+  function generate() {
+    if (!isAdmin) return;
+    showError('');
+
+    try {
+      buildState();
+    } catch (err) {
+      showError(err.message);
+      return;
+    }
+
+    render();
+    saveCurrentState();
+  }
+
+  function showError(msg) {
+    var box = $('errorBox');
+    if (!msg) {
+      box.classList.remove('show');
+      box.textContent = '';
+      return;
+    }
+    box.textContent = msg;
+    box.classList.add('show');
+  }
+
+  // ---------- 服务器数据 ----------
+  function loadFromServer() {
+    return apiFetch('/api/data')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        $('seatConfig').value = d.seats || '';
+        $('tableInfo').value = d.tables || '';
+        $('roster').value = d.roster || '';
+        updateLineNums();
+        tryRender(true);
+      })
+      .catch(function (err) {
+        if (err && err.authRedirected) return;
+        $('result').innerHTML =
+          '<div class="placeholder">无法连接服务器<br><span style="font-size:13px">' +
+          '请确认已运行 <code>node server.js</code>，并通过 nginx 访问</span></div>';
+      });
+  }
+
+  function tryRender(silent) {
+    try {
+      buildState();
+      render();
+      showError('');
+      return true;
+    } catch (err) {
+      state.tables = [];
+      state.slots = [];
+      state.selected = null;
+      render();
+      if (!silent && isAdmin) showError(err.message);
+      return false;
+    }
+  }
+
+  // ---------- 退出登录 ----------
+  function doLogout() {
+    var a = getAuth();
+    if (a) {
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: a.token })
+      }).catch(function () {});
+    }
+    clearAuth();
+    location.replace('/login.html');
+  }
+
+  // ---------- 文件导入 ----------
+  function readTextFile(file) {
+    return file.arrayBuffer().then(function (buf) {
+      var text;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+      } catch (e1) {
+        try {
+          text = new TextDecoder('gbk').decode(buf);
+        } catch (e2) {
+          text = new TextDecoder('utf-8').decode(buf);
+        }
+      }
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      return text;
+    });
+  }
+
+  function bindFileImport(inputId, targetId, after) {
+    $(inputId).addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      readTextFile(file).then(function (text) {
+        $(targetId).value = text;
+        showError('');
+        if (after) after();
+      }).catch(function (err) {
+        showError('读取文件失败：' + err.message);
+      });
+      e.target.value = '';
+    });
+  }
+
+  // ---------- 事件绑定 ----------
+  if (isAdmin) $('panel').hidden = false;
+  $('roleBadge').textContent = isAdmin ? '管理员' : '访客 · 只读';
+
+  // 右上角徽标是 fixed 定位，按它的实际宽度为 summary 预留右侧空间，
+  // 避免压住「定位」按钮及左侧导航按钮
+  function syncTopbarSpace() {
+    var bar = document.querySelector('.topbar');
+    if (!bar) return;
+    var w = bar.getBoundingClientRect().width + 18 /* right:18px */ + 12;
+    document.documentElement.style.setProperty('--topbar-space', Math.ceil(w) + 'px');
+  }
+  syncTopbarSpace();
+  window.addEventListener('resize', syncTopbarSpace);
+
+  $('btnLogout').addEventListener('click', doLogout);
+  $('btnGen').addEventListener('click', generate);
+
+  $('roster').addEventListener('input', updateLineNums);
+  $('roster').addEventListener('scroll', function () {
+    $('lineNums').scrollTop = this.scrollTop;
+  });
+
+  bindFileImport('fileInput', 'roster', updateLineNums);
+  bindFileImport('tableFileInput', 'tableInfo');
+
+  window.addEventListener('resize', fitStages);
+
+  // 首屏：读取服务器数据并渲染（只读）
+  updateLineNums();
+  loadFromServer();
+})();
+</script>
+</body>
+</html>

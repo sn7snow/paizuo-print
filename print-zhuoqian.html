@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A4 三折打印（姓名 / 单位）</title>
+<style>
+  :root{
+    /* ---- B 区（数据面）名字 ---- */
+    --b-name-font: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    --b-name-size: 12mm;
+    --b-name-ls: 0.02em;
+    --b-name-lh: 1.15;
+    --b-name-op: 1;
+    /* ---- B 区单位 ---- */
+    --b-org-font: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    --b-org-size: 6mm;
+    --b-org-ls: 0em;
+    --b-org-lh: 1.35;
+    --b-org-op: 0.88;
+    --b-org-dx: 0mm;
+    --b-org-dy: 0mm;
+    --b-name-dx: 0mm;
+    --b-name-dy: 0mm;
+    /* ---- A 区（第 3 列）---- */
+    --a-font: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    --a-size: 10mm;
+    --a-ls: 0.02em;
+    --a-lh: 1.15;
+    --a-op: 1;
+    /* A 区第 3 列自身的微调偏移（正值 = 纸上向右 / 向下，与 B 区整体偏移叠加） */
+    --a-dx: 0mm;
+    --a-dy: 0mm;
+    /* ---- 位置偏移（mm，可为负）----
+       B 区一组；A 区整体与 B 区反向跟随，另在 ⑦ 组内可对第 3 列单独微调 */
+    --b-dx: 0mm;
+    --b-dy: 0mm;
+    --text-color: #111111;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; }
+  [hidden]{ display: none !important; }
+  body{
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #eef1f5;
+    color: #1f2937;
+  }
+  .page-nav{
+    height: 56px; padding: 0 18px; display: flex; align-items: center;
+    justify-content: space-between; gap: 12px; background: #fff;
+    border-bottom: 1px solid #e3e6ea;
+  }
+  .page-links{ display: flex; align-items: center; gap: 8px; overflow-x: auto; }
+  .meeting-link{
+    display: inline-flex; align-items: center; padding: 6px 10px;
+    border: 1px solid #bfdbfe; border-radius: 8px; color: #1d4ed8;
+    background: #eff6ff; text-decoration: none; font-size: 13px; white-space: nowrap;
+  }
+  .meeting-link:hover{ background: #dbeafe; }
+  .role-badge{
+    font-size: 12px; color: #64748b; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 12px;
+    margin-left: auto; white-space: nowrap;
+  }
+  .nav-login{
+    flex: none; background: #fff; border: 1px solid #cbd5e1; color: #334155;
+    border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  .nav-login:hover{ background: #f8fafc; }
+  .app{ display: flex; height: calc(100vh - 56px); }
+  .locked{
+    height: calc(100vh - 56px); display: grid; place-content: center;
+    color: #64748b; font-size: 15px; text-align: center;
+  }
+
+  /* ---------- 左侧面板 ---------- */
+  .sidebar{
+    width: 336px;
+    flex: none;
+    background: #fff;
+    border-right: 1px solid #e3e6ea;
+    padding: 18px 16px 32px;
+    overflow-y: auto;
+  }
+  .sidebar h1{ font-size: 17px; margin: 0 0 4px; }
+  .sidebar .sub{ font-size: 12px; color: #8b94a3; margin: 0 0 18px; line-height: 1.5; }
+
+  .field{ margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed #edf0f4; }
+  .field:last-of-type{ border-bottom: none; }
+  .field > .title{
+    display: block; font-size: 13px; font-weight: 700;
+    margin-bottom: 8px; color: #374151;
+  }
+  .field > .title small{ font-weight: 400; color: #9aa3af; }
+  .field.dim{ opacity: .5; }
+
+  input[type=file]{
+    width: 100%; font-size: 12px; color: #4b5563;
+  }
+  input[type=file]::file-selector-button{
+    border: 1px solid #d1d5db; background: #f9fafb; color: #374151;
+    padding: 6px 10px; border-radius: 6px; font-size: 12px;
+    cursor: pointer; margin-right: 8px;
+  }
+  input[type=file]::file-selector-button:hover{ background: #f3f4f6; }
+
+  .hint{ font-size: 12px; color: #9aa3af; margin-top: 7px; word-break: break-all; line-height: 1.5; }
+  .hint.ok{ color: #16a34a; font-weight: 600; }
+  .hint.err{ color: #dc2626; }
+
+  .opt{
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: #374151; margin-bottom: 9px;
+  }
+  .opt > .lbl{ width: 40px; flex: none; color: #6b7280; font-size: 12px; }
+  .opt select{
+    flex: 1; min-width: 0; padding: 5px 6px; font-size: 12px;
+    border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #374151;
+  }
+  .opt input[type=range]{ flex: 1; min-width: 60px; accent-color: #2563eb; }
+  .opt input[type=color]{
+    width: 40px; height: 26px; padding: 0; border: 1px solid #d1d5db;
+    border-radius: 6px; background: #fff; cursor: pointer;
+  }
+  .opt label{ display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  /* 数值输入框：范围条之外的精确输入，可超出范围条两端（由 JS 夹紧） */
+  .numwrap{ flex: none; display: inline-flex; align-items: center; gap: 2px; }
+  .numwrap input{
+    width: 54px; padding: 4px 5px; text-align: right;
+    font-size: 12px; font-variant-numeric: tabular-nums;
+    border: 1px solid #d1d5db; border-radius: 6px;
+    font-family: inherit; color: #374151; background: #fff;
+    -moz-appearance: textfield;
+  }
+  .numwrap input::-webkit-outer-spin-button,
+  .numwrap input::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
+  .numwrap input:focus{ outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+  .numwrap i{ font-style: normal; font-size: 11px; color: #9aa3af; width: 16px; }
+
+  .btn{
+    width: 100%; padding: 12px; border: none; border-radius: 9px;
+    background: #2563eb; color: #fff; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: .15s;
+  }
+  .btn:hover{ background: #1d4ed8; }
+  .btn:active{ transform: translateY(1px); }
+  .btn:disabled{ background: #c7cdd6; cursor: not-allowed; transform: none; }
+
+  /* 次级按钮（导出配置等） */
+  .btn2{
+    width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 9px;
+    background: #f8fafc; color: #1d4ed8; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: .15s; font-family: inherit;
+  }
+  .btn2:hover{ background: #eff6ff; border-color: #93c5fd; }
+  .btn2:active{ transform: translateY(1px); }
+
+  .tips{ margin-top: 14px; font-size: 12px; color: #9aa3af; line-height: 1.6; }
+  .tips b{ color: #6b7280; }
+
+  /* ---------- 单页调整 ---------- */
+  .field.locked{ opacity: .45; pointer-events: none; }
+  .opt.dim{ opacity: .4; }
+  .page-edit{
+    margin-top: 10px; padding: 10px 10px 9px; border-radius: 10px;
+    background: #f7f9fc; border: 1px solid #e6ebf2;
+  }
+  .pe-target{ display: block; font-size: 12px; color: #8b94a3; line-height: 1.5; margin-bottom: 8px; }
+  .pe-target b{ color: #1d4ed8; }
+  .pe-toggle{
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px; color: #334155; cursor: pointer; user-select: none;
+  }
+  .pe-toggle input:disabled + span{ color: #a8b1bd; }
+  .pe-reset{
+    width: 100%; margin-top: 8px; padding: 6px 8px; font-size: 12px;
+    border: 1px solid #cbd5e1; border-radius: 7px; background: #fff;
+    color: #334155; cursor: pointer; font-family: inherit;
+  }
+  .pe-reset:hover:not(:disabled){ background: #f1f5f9; }
+  .pe-reset:disabled{ opacity: .45; cursor: not-allowed; }
+  .pe-hint{ margin-top: 7px; font-size: 11px; color: #9aa3af; line-height: 1.55; }
+
+  /* ---------- 右侧预览 ---------- */
+  .preview{
+    flex: 1; min-width: 0;
+    overflow: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  .empty{
+    margin: auto;
+    color: #9aa3af;
+    font-size: 14px;
+    text-align: center;
+    line-height: 2;
+  }
+  .empty span{ font-size: 40px; display: block; opacity: .35; }
+
+  /* 缩放槽：JS 会设置它的宽高（px），内部 .page 用 transform 缩放 */
+  .page-slot{
+    position: relative;
+    overflow: hidden;
+    flex: none;
+  }
+
+  /* ---------- A4 纸张 ---------- */
+  .page{
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    background: #fff;
+    overflow: hidden;
+    transform-origin: top left;
+    cursor: pointer;
+    box-shadow: 0 3px 18px rgba(0,0,0,.14);
+  }
+  /* 选中态：内阴影，不会被 page-slot 的 overflow 裁掉 */
+  .page.selected{ box-shadow: inset 0 0 0 4px #2563eb; }
+  /* 本页存在单独覆盖 */
+  .page.overridden::before{
+    content: '本页已单独调整';
+    position: absolute; left: 6mm; top: 3mm; z-index: 6;
+    font-size: 3.4mm; line-height: 1; padding: 1.6mm 2.6mm;
+    border-radius: 2mm; background: rgba(37,99,235,.92); color: #fff;
+  }
+
+  /* C 区页码（下三分之一）：仅预览辅助查看，不打印 */
+  .page-num{
+    position: absolute; left: 0; right: 0; top: 198mm; height: 99mm;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 45mm; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: rgba(37, 99, 235, .30);
+    z-index: 4; pointer-events: none; user-select: none;
+  }
+
+  .page-bg{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* 长边三等分 → 每份 99mm；A 区为上段（回折面），B 区为中段（数据面） */
+  .region{
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 99mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    /* 文字超出分区范围时直接裁掉，不会跑到相邻分区 */
+    overflow: hidden;
+  }
+  .region-a{ top: 0; }
+  .region-b{ top: 99mm; }
+
+  .content{
+    width: 100%;
+    padding: 0 12mm;
+    text-align: center;
+    color: var(--text-color);
+    display: flex;
+    justify-content: center;
+  }
+  /* 位置偏移作用于未旋转的父级 → 正值 = 纸上向右 / 向下。
+     A 区没有自己的偏移：内容由 B 区经「旋转180°/正立复制/第3列」派生，
+     位置取同一组值同向跟随 —— 调 B 区，A 区一起动，方向一致 */
+  .region-b .content{ transform: translate(var(--b-dx), var(--b-dy)); }
+  .region-a .content{ transform: translate(calc(var(--b-dx) * -1), calc(var(--b-dy) * -1)); }
+
+  /* 旋转 180°：纸上倒置，沿 99mm 折线回折后正向、从左往右阅读 */
+  .rot{ width: 100%; }
+  .rot.flip{ transform: rotate(180deg); }
+
+  .content-inner{
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5mm;
+  }
+
+  .item{ width: 100%; }
+  .item .name{
+    font-family: var(--b-name-font);
+    font-size: var(--b-name-size);
+    font-weight: 800;
+    letter-spacing: var(--b-name-ls);
+    line-height: var(--b-name-lh);
+    opacity: var(--b-name-op);
+    word-break: break-word;
+    transform: translate(var(--b-name-dx), var(--b-name-dy));
+  }
+  .item .org{
+    font-family: var(--b-org-font);
+    font-size: var(--b-org-size);
+    font-weight: 500;
+    letter-spacing: var(--b-org-ls);
+    line-height: var(--b-org-lh);
+    opacity: var(--b-org-op);
+    transform: translate(var(--b-org-dx), var(--b-org-dy));
+    margin-top: 2.5mm;
+    word-break: break-word;
+  }
+  /* A 区第 3 列：独立样式 */
+  .item .col3{
+    font-family: var(--a-font);
+    font-size: var(--a-size);
+    font-weight: 700;
+    letter-spacing: var(--a-ls);
+    line-height: var(--a-lh);
+    opacity: var(--a-op);
+    word-break: break-word;
+    /* 祖先带 rotate(180deg)，取反后正值才等于纸上向右 / 向下 */
+    transform: translate(calc(var(--a-dx) * -1), calc(var(--a-dy) * -1));
+  }
+
+  /* 预览辅助线（打印时隐藏） */
+  .page.guides .region-a{
+    border-bottom: 1px dashed rgba(220, 38, 38, .45);
+  }
+  .page.guides::after{
+    content: '折线（A/B 交界 99mm）';
+    position: absolute;
+    left: 0; right: 0;
+    top: 99mm;
+    height: 0;
+    border-top: 1px dashed rgba(37, 99, 235, .7);
+    font-size: 8pt;
+    line-height: 0;
+    text-align: right;
+    padding-right: 8mm;
+    color: #2563eb;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* ---------- 打印 ---------- */
+  @page{ size: A4; margin: 0; }
+
+  @media print{
+    html, body{
+      height: auto !important;
+      overflow: visible !important;
+      background: #fff !important;
+    }
+    .page-nav, .locked{ display: none !important; }
+    .app{ display: block; height: auto; }
+    .app[hidden]{ display: none !important; }
+    .sidebar{ display: none !important; }
+    .preview{
+      display: block;
+      padding: 0;
+      overflow: visible;
+      gap: 0;
+    }
+    .page-slot{
+      width: auto !important;
+      height: auto !important;
+      overflow: visible !important;
+      page-break-after: always;
+      break-after: page;
+    }
+    .page-slot:last-child{
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .page{
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    /* 辅助线不打印 */
+    .page.guides .region-a{ border-bottom: none !important; }
+    .page.guides::after{ display: none !important; }
+    .page.overridden::before{ display: none !important; }
+    /* C 区页码只用于预览，不打印 */
+    .page-num{ display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="page-nav" aria-label="页面导航">
+  <div class="page-links">
+    <a class="meeting-link" href="/index.html">餐位</a>
+    <a class="meeting-link" href="/huiyi.html">会议桌位</a>
+    <a class="meeting-link" href="/print-zhuoqian.html">三折打印</a>
+  </div>
+  <span class="role-badge" id="roleBadge"></span>
+  <button class="nav-login" id="btnLogout" type="button">退出</button>
+</nav>
+<div class="locked" id="locked">请先登录后使用打印功能</div>
+
+<div class="app" id="app" hidden>
+  <!-- ============ 左侧控制面板 ============ -->
+  <aside class="sidebar">
+    <h1>A4 三折打印</h1>
+    <p class="sub">A4 长边三等分：数据印在 B 区（中段）<br>A 区为折回面，沿 99mm 折线回折</p>
+
+    <div class="field">
+      <label class="title" for="csvFile">① 导入 CSV（名字,单位,第3列）</label>
+      <input type="file" id="csvFile" accept=".csv,text/csv,text/plain">
+      <div class="hint" id="csvInfo">未选择文件</div>
+    </div>
+
+    <div class="field">
+      <label class="title" for="bgFile">② 导入背景图（JPG）</label>
+      <input type="file" id="bgFile" accept="image/jpeg,image/png,image/*">
+      <div class="hint" id="bgInfo">未选择文件</div>
+    </div>
+
+    <div class="field">
+      <label class="title">③ 版面</label>
+
+      <div class="opt">
+        <span class="lbl">A 区</span>
+        <select id="aMode">
+          <option value="rotate">旋转180°（折后正向）</option>
+          <option value="upright">正立复制</option>
+          <option value="col3">第3列（旋转180°）</option>
+          <option value="none">留空</option>
+        </select>
+      </div>
+
+      <div class="opt">
+        <span class="lbl">分页</span>
+        <select id="pageMode">
+          <option value="perRow">每条数据一页</option>
+          <option value="all">全部数据放同一页</option>
+        </select>
+      </div>
+
+      <div class="opt">
+        <label><input type="checkbox" id="showGuides" checked> 显示分区 / 折线（不打印）</label>
+      </div>
+    </div>
+
+    <div class="field" data-global-only>
+      <label class="title">④ B 区名字样式</label>
+      <div class="opt">
+        <span class="lbl">字体</span>
+        <select id="bNameFont">
+          <option value="default">系统默认</option>
+          <option value="yahei">微软雅黑</option>
+          <option value="simhei">黑体</option>
+          <option value="simsun">宋体</option>
+          <option value="kaiti">楷体</option>
+          <option value="fangsong">仿宋</option>
+          <option value="arial">Arial</option>
+          <option value="times">Times New Roman</option>
+        </select>
+      </div>
+      <div class="opt">
+        <span class="lbl">字号</span>
+        <input type="range" id="bNameSize" min="2" max="120" step="0.5" value="12">
+        <span class="numwrap"><input type="number" id="bNameSizeNum" min="2" max="120" step="0.5" value="12"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">字距</span>
+        <input type="range" id="bNameLS" min="-0.5" max="6" step="0.02" value="0.02">
+        <span class="numwrap"><input type="number" id="bNameLSNum" min="-0.5" max="6" step="0.02" value="0.02"><i>em</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">行距</span>
+        <input type="range" id="bNameLH" min="0.2" max="6" step="0.05" value="1.15">
+        <span class="numwrap"><input type="number" id="bNameLHNum" min="0.2" max="6" step="0.05" value="1.15"><i>×</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">透明</span>
+        <input type="range" id="bNameOp" min="0.05" max="1" step="0.01" value="1">
+        <span class="numwrap"><input type="number" id="bNameOpNum" min="5" max="100" step="1" value="100"><i>%</i></span>
+      </div>
+    </div>
+
+    <div class="field" data-global-only>
+      <label class="title">⑤ B 区单位样式</label>
+      <div class="opt">
+        <span class="lbl">字体</span>
+        <select id="bOrgFont">
+          <option value="default">系统默认</option>
+          <option value="yahei">微软雅黑</option>
+          <option value="simhei">黑体</option>
+          <option value="simsun">宋体</option>
+          <option value="kaiti">楷体</option>
+          <option value="fangsong">仿宋</option>
+          <option value="arial">Arial</option>
+          <option value="times">Times New Roman</option>
+        </select>
+      </div>
+      <div class="opt">
+        <span class="lbl">字号</span>
+        <input type="range" id="bOrgSize" min="1" max="100" step="0.5" value="6">
+        <span class="numwrap"><input type="number" id="bOrgSizeNum" min="1" max="100" step="0.5" value="6"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">字距</span>
+        <input type="range" id="bOrgLS" min="-0.5" max="6" step="0.02" value="0">
+        <span class="numwrap"><input type="number" id="bOrgLSNum" min="-0.5" max="6" step="0.02" value="0"><i>em</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">行距</span>
+        <input type="range" id="bOrgLH" min="0.2" max="6" step="0.05" value="1.35">
+        <span class="numwrap"><input type="number" id="bOrgLHNum" min="0.2" max="6" step="0.05" value="1.35"><i>×</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">透明</span>
+        <input type="range" id="bOrgOp" min="0.05" max="1" step="0.01" value="0.88">
+        <span class="numwrap"><input type="number" id="bOrgOpNum" min="5" max="100" step="1" value="88"><i>%</i></span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="title">⑥ 位置 <small>（可为负数；名字 / 单位可各自独立微调）</small></label>
+      <div class="opt">
+        <span class="lbl">整体横向</span>
+        <input type="range" id="bDx" min="-100" max="100" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="bDxNum" min="-100" max="100" step="0.5" value="0"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">整体纵向</span>
+        <input type="range" id="bDy" min="-60" max="60" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="bDyNum" min="-60" max="60" step="0.5" value="0"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">名字横向</span>
+        <input type="range" id="bNameDx" min="-100" max="100" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="bNameDxNum" min="-100" max="100" step="0.5" value="0"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">名字纵向</span>
+        <input type="range" id="bNameDy" min="-60" max="60" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="bNameDyNum" min="-60" max="60" step="0.5" value="0"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">单位横向</span>
+        <input type="range" id="bOrgDx" min="-100" max="100" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="bOrgDxNum" min="-100" max="100" step="0.5" value="0"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">单位纵向</span>
+        <input type="range" id="bOrgDy" min="-60" max="60" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="bOrgDyNum" min="-60" max="60" step="0.5" value="0"><i>mm</i></span>
+      </div>
+
+      <div class="page-edit">
+        <span class="pe-target" id="peTarget">未选中页面</span>
+        <label class="pe-toggle">
+          <input type="checkbox" id="peEnable" disabled>
+          <span>使能单页调整（只改选中页）</span>
+        </label>
+        <button type="button" class="pe-reset" id="peReset" disabled>恢复跟随全局</button>
+        <div class="pe-hint" id="peHint">先点击右侧预览中的某一页选中，再打开开关。</div>
+      </div>
+    </div>
+
+    <div class="field" id="aStyleField" data-global-only>
+      <label class="title">⑦ A 区第 3 列样式 <small>（仅「第3列」模式）</small></label>
+      <div class="opt">
+        <span class="lbl">字体</span>
+        <select id="aFont">
+          <option value="default">系统默认</option>
+          <option value="yahei">微软雅黑</option>
+          <option value="simhei">黑体</option>
+          <option value="simsun">宋体</option>
+          <option value="kaiti">楷体</option>
+          <option value="fangsong">仿宋</option>
+          <option value="arial">Arial</option>
+          <option value="times">Times New Roman</option>
+        </select>
+      </div>
+      <div class="opt">
+        <span class="lbl">字号</span>
+        <input type="range" id="aSize" min="1" max="120" step="0.5" value="10">
+        <span class="numwrap"><input type="number" id="aSizeNum" min="1" max="120" step="0.5" value="10"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">字距</span>
+        <input type="range" id="aLS" min="-0.5" max="6" step="0.02" value="0.02">
+        <span class="numwrap"><input type="number" id="aLSNum" min="-0.5" max="6" step="0.02" value="0.02"><i>em</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">行距</span>
+        <input type="range" id="aLH" min="0.2" max="6" step="0.05" value="1.15">
+        <span class="numwrap"><input type="number" id="aLHNum" min="0.2" max="6" step="0.05" value="1.15"><i>×</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">透明</span>
+        <input type="range" id="aOp" min="0.05" max="1" step="0.01" value="1">
+        <span class="numwrap"><input type="number" id="aOpNum" min="5" max="100" step="1" value="100"><i>%</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">横向</span>
+        <input type="range" id="aDx" min="-100" max="100" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="aDxNum" min="-100" max="100" step="0.5" value="0"><i>mm</i></span>
+      </div>
+      <div class="opt">
+        <span class="lbl">纵向</span>
+        <input type="range" id="aDy" min="-60" max="60" step="0.5" value="0">
+        <span class="numwrap"><input type="number" id="aDyNum" min="-60" max="60" step="0.5" value="0"><i>mm</i></span>
+      </div>
+    </div>
+
+    <div class="field" data-global-only>
+      <label class="title">⑧ 通用</label>
+      <div class="opt">
+        <span class="lbl">字色</span>
+        <input type="color" id="textColor" value="#111111">
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="title">⑨ 配置备份 <small>（换电脑时导出 / 导入）</small></label>
+      <button type="button" class="btn2" id="cfgExport">⬇ 导出配置（JSON）</button>
+      <input type="file" id="cfgFile" accept=".json,application/json" style="margin-top:9px">
+      <div class="hint" id="cfgInfo">导出内容：全部样式参数 + 各页单独调整（不含 CSV 数据与背景图）</div>
+    </div>
+
+    <button class="btn" id="printBtn">🖨 打印全部</button>
+
+    <div class="tips">
+      <b>提示：</b><br>
+      · CSV 三列：第 1 列名字，第 2 列单位，第 3 列备用。<br>
+      · 第 2 列写 <b>*</b> 或留空 → 不显示单位（A/B 区都生效）。<br>
+      · A 区「旋转180°」：纸上倒置，沿 99mm 折线回折后正面正向阅读。<br>
+      · A 区内容由 B 区经版面功能派生，整体位置与 B 区反向跟随；选「第3列」时可在 ⑦ 组内单独微调横/纵位置。<br>
+      · 位置偏移可为负数；文字超出分区范围的部分会被裁掉。<br>
+      · 单页调整：点选页面 → 打开开关 → 拖横向/纵向，只影响该页（刷新即失效）。<br>
+      · C 区大字页码仅用于预览查找，不会被打印。<br>
+      · 换电脑：⑨ 导出配置 JSON，在新电脑导入同名 CSV + 该 JSON 即可恢复。<br>
+      · 打印时选 A4、边距「无」、勾选「背景图形」。
+    </div>
+  </aside>
+
+  <!-- ============ 右侧预览 ============ -->
+  <main class="preview" id="preview"></main>
+</div>
+
+<script>
+/* ============================================================
+ * 基础工具
+ * ========================================================== */
+const PX_PER_MM = (() => {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;left:-9999px;top:0;width:100mm;height:0;';
+  document.body.appendChild(el);
+  const w = el.getBoundingClientRect().width / 100;
+  el.remove();
+  return w || (96 / 25.4);
+})();
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => (
+  { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+));
+
+const FONTS = {
+  default: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif',
+  yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
+  simhei: 'SimHei, "Heiti SC", "Microsoft YaHei", sans-serif',
+  simsun: 'SimSun, "Songti SC", "Noto Serif CJK SC", serif',
+  kaiti: 'KaiTi, "Kaiti SC", "STKaiti", serif',
+  fangsong: 'FangSong, "STFangsong", "Fangsong SC", serif',
+  arial: 'Arial, Helvetica, sans-serif',
+  times: '"Times New Roman", Times, serif'
+};
+
+/* ============================================================
+ * 登录会话
+ * ========================================================== */
+const AUTH_KEY = 'paizuo.auth';
+function getAuth() {
+  try {
+    const a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+    if (a && a.token && (a.role === 'admin' || a.role === 'viewer')) return a;
+  } catch (e) {}
+  return null;
+}
+function clearAuth() { localStorage.removeItem(AUTH_KEY); }
+
+const auth = getAuth();
+if (!auth) {
+  location.replace('/login.html?next=' + encodeURIComponent(location.pathname));
+}
+let isAdmin = !!auth && auth.role === 'admin';
+
+function applyRole() {
+  roleBadge.textContent = isAdmin ? '管理员' : '访客 · 只读';
+  app.hidden = !isAdmin;
+  locked.hidden = isAdmin;
+  if (!isAdmin) locked.textContent = '三折打印需要管理员口令登录';
+}
+
+function doLogout() {
+  if (auth) {
+    fetch('/api/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: auth.token })
+    }).catch(() => {});
+  }
+  clearAuth();
+  location.replace('/login.html');
+}
+
+/* ============================================================
+ * CSV 解析
+ * ========================================================== */
+function parseCSV(text){
+  const rowsOut = [];
+  let row = [], field = '', inQuotes = false;
+
+  for (let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if (inQuotes){
+      if (ch === '"'){
+        if (text[i + 1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"')       inQuotes = true;
+      else if (ch === ',')  { row.push(field); field = ''; }
+      else if (ch === '\n') { row.push(field); rowsOut.push(row); row = []; field = ''; }
+      else if (ch === '\r') { /* ignore */ }
+      else                  field += ch;
+    }
+  }
+  row.push(field);
+  rowsOut.push(row);
+
+  return rowsOut.filter(r => r.some(c => c.trim() !== ''));
+}
+
+function detectHeader(row){
+  const a = (row[0] || '').trim().toLowerCase();
+  const b = (row[1] || '').trim().toLowerCase();
+  const nameKeys = ['姓名','名字','名称','name','fullname','full name','姓 名'];
+  const orgKeys  = ['单位','部门','公司','所属单位','学校','org','unit','company','department','organization'];
+  return nameKeys.includes(a) || orgKeys.includes(b);
+}
+
+/* ============================================================
+ * 状态
+ * ========================================================== */
+let rows = [];       // [{name, org, col3}]
+let bgUrl = null;    // 背景图 blob url
+
+/* ============================================================
+ * DOM
+ * ========================================================== */
+const preview      = document.getElementById('preview');
+const csvFile      = document.getElementById('csvFile');
+const bgFile       = document.getElementById('bgFile');
+const csvInfo      = document.getElementById('csvInfo');
+const bgInfo       = document.getElementById('bgInfo');
+const aMode        = document.getElementById('aMode');
+const pageMode     = document.getElementById('pageMode');
+const showGuides   = document.getElementById('showGuides');
+const printBtn     = document.getElementById('printBtn');
+const app          = document.getElementById('app');
+const locked       = document.getElementById('locked');
+const btnLogout    = document.getElementById('btnLogout');
+const roleBadge    = document.getElementById('roleBadge');
+const aStyleField  = document.getElementById('aStyleField');
+const peTarget     = document.getElementById('peTarget');
+const peEnable     = document.getElementById('peEnable');
+const peReset      = document.getElementById('peReset');
+const peHint       = document.getElementById('peHint');
+const cfgExport    = document.getElementById('cfgExport');
+const cfgFile      = document.getElementById('cfgFile');
+const cfgInfo      = document.getElementById('cfgInfo');
+
+btnLogout.addEventListener('click', doLogout);
+applyRole();
+
+/* ============================================================
+ * 单页调整（使能开关 + 指纹选中；仅内存，刷新即失效）
+ * 可单独覆盖：整体位置、名字/单位各自的横纵位置、字号、行距
+ * ========================================================== */
+const OFFSET_VARS = [
+  '--b-dx', '--b-dy',
+  '--b-name-dx', '--b-name-dy', '--b-org-dx', '--b-org-dy',
+  '--b-name-size', '--b-org-size', '--b-name-lh', '--b-org-lh'
+];
+const OFFSET_BASE = {
+  '--b-dx': 'bDx', '--b-dy': 'bDy',
+  '--b-name-dx': 'bNameDx', '--b-name-dy': 'bNameDy',
+  '--b-org-dx': 'bOrgDx', '--b-org-dy': 'bOrgDy',
+  '--b-name-size': 'bNameSize', '--b-org-size': 'bOrgSize',
+  '--b-name-lh': 'bNameLH', '--b-org-lh': 'bOrgLH'
+};
+const PERPAGE_IDS = new Set(Object.values(OFFSET_BASE));
+const pageOverrides = new Map();   // 指纹 -> { '--b-dx': '-12mm' }
+let selectedKey = null;            // 当前选中页的指纹
+let selectedEl  = null;            // 当前选中页的 .page 元素
+let perPageMode = false;           // 使能开关
+
+// 所有样式写入都经过这里：单页模式且该项支持覆盖时写入页面元素
+function applyVar(cssVar, value) {
+  const root = document.documentElement;
+
+  if (perPageMode && selectedEl && selectedKey && OFFSET_VARS.includes(cssVar)) {
+    const globalVal = root.style.getPropertyValue(cssVar).trim();
+    if (value === globalVal) {
+      // 调回与全局一致 → 取消覆盖，恢复继承
+      selectedEl.style.removeProperty(cssVar);
+      const o = pageOverrides.get(selectedKey);
+      if (o) {
+        delete o[cssVar];
+        if (!Object.keys(o).length) pageOverrides.delete(selectedKey);
+      }
+    } else {
+      selectedEl.style.setProperty(cssVar, value);
+      const o = pageOverrides.get(selectedKey) || {};
+      o[cssVar] = value;
+      pageOverrides.set(selectedKey, o);
+    }
+    refreshOverrideMarks();
+    return;
+  }
+
+  root.style.setProperty(cssVar, value);
+}
+
+function refreshOverrideMarks() {
+  if (selectedEl) selectedEl.classList.toggle('overridden', !!selectedKey && pageOverrides.has(selectedKey));
+  peReset.disabled = !selectedEl || !selectedKey || !pageOverrides.has(selectedKey);
+}
+
+// 把位置控件切到目标当前生效值（不触发写入）
+function syncOffsetControls() {
+  const el = (perPageMode && selectedEl) ? selectedEl : document.documentElement;
+  const cs = getComputedStyle(el);
+  OFFSET_VARS.forEach(cssVar => {
+    const num = parseFloat(cs.getPropertyValue(cssVar));
+    if (!isFinite(num)) return;
+    const r = document.getElementById(OFFSET_BASE[cssVar]);
+    const n = document.getElementById(OFFSET_BASE[cssVar] + 'Num');
+    if (r) r.value = num;
+    if (n) n.value = Number(num.toFixed(3));
+  });
+}
+
+function updatePageEditUI() {
+  const has = !!selectedEl;
+  peEnable.disabled = !has;
+
+  if (has) {
+    const idx = Number(selectedEl.dataset.index) + 1;
+    const label = selectedEl.dataset.label || '';
+    peTarget.innerHTML = '已选中 <b>第 ' + idx + ' 页</b>' + (label ? ' · ' + esc(label) : '');
+  } else {
+    peTarget.textContent = '未选中页面';
+  }
+
+  // 单页模式下：组内含可单页覆盖控件的组保持解锁；组内其余控件逐个禁用并弱化
+  document.querySelectorAll('[data-global-only]').forEach(f => {
+    const hasPerpage = [...f.querySelectorAll('input,select')]
+      .some(el => PERPAGE_IDS.has(el.id.replace(/Num$/, '')));
+    f.classList.toggle('locked', perPageMode && !hasPerpage);
+    if (perPageMode && hasPerpage) {
+      f.querySelectorAll('input,select').forEach(el => {
+        const supported = PERPAGE_IDS.has(el.id.replace(/Num$/, ''));
+        el.disabled = !supported;
+        const opt = el.closest('.opt');
+        if (opt) opt.classList.toggle('dim', !supported);
+      });
+    } else {
+      f.querySelectorAll('input,select').forEach(el => { el.disabled = false; });
+      f.querySelectorAll('.opt.dim').forEach(o => o.classList.remove('dim'));
+    }
+  });
+
+  peHint.textContent = perPageMode
+    ? '单页模式：位置 / 字号 / 行距只影响这一页；字体、字距、透明度仍作用于全部页面。'
+    : (has ? '打开开关后，位置 / 字号 / 行距只影响选中页。'
+           : '先点击右侧预览中的某一页选中它，再打开开关。');
+
+  refreshOverrideMarks();
+  syncOffsetControls();
+}
+
+function selectPage(el) {
+  if (el === selectedEl) { clearSelection(); return; }   // 再点一次取消选中
+  if (selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = el;
+  selectedKey = el.dataset.key || null;
+  el.classList.add('selected');
+  updatePageEditUI();
+}
+
+function clearSelection() {
+  if (selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = null;
+  selectedKey = null;
+  perPageMode = false;
+  peEnable.checked = false;
+  updatePageEditUI();
+}
+
+peEnable.addEventListener('change', () => {
+  perPageMode = peEnable.checked && !!selectedEl;
+  updatePageEditUI();
+});
+
+peReset.addEventListener('click', () => {
+  if (!selectedEl || !selectedKey) return;
+  OFFSET_VARS.forEach(v => selectedEl.style.removeProperty(v));
+  pageOverrides.delete(selectedKey);
+  updatePageEditUI();
+});
+
+/* ============================================================
+ * 样式参数绑定
+ * 每项 = 范围条 + 数值框，两者联动；数值框可输入范围外的值（自动夹紧）
+ * ========================================================== */
+function bindRange(base, cssVar, suffix, displayFactor) {
+  const r = document.getElementById(base);
+  const n = document.getElementById(base + 'Num');
+  if (!r || !n) return;
+
+  const f = displayFactor || 1;
+  const rMin = Number(r.min);
+  const rMax = Number(r.max);
+  const suffixTxt = suffix || '';
+
+  const write = v => applyVar(cssVar, v + suffixTxt);
+  const clamp = v => Math.min(rMax, Math.max(rMin, v));
+  const shown = v => Number((v * f).toFixed(3));
+
+  function fromRange() {
+    const v = Number(r.value);
+    write(v);
+    n.value = shown(v);
+  }
+
+  function fromNumber() {
+    const input = Number(n.value);
+    if (!isFinite(input)) return;                 // 输入过程中允许空值
+    const v = clamp(input / f);
+    write(v);
+    if (v >= rMin && v <= rMax) r.value = v;      // 超范围时不动范围条
+  }
+
+  function normalize() {
+    const v = clamp(Number(n.value) / f);
+    write(v);
+    r.value = v;
+    n.value = shown(v);
+  }
+
+  r.addEventListener('input', fromRange);
+  n.addEventListener('input', fromNumber);
+  n.addEventListener('change', normalize);
+  n.addEventListener('blur', normalize);
+
+  fromRange();
+}
+
+/* B 区名字 */
+bindRange('bNameSize', '--b-name-size', 'mm');
+bindRange('bNameLS',   '--b-name-ls',   'em');
+bindRange('bNameLH',   '--b-name-lh',   '');
+bindRange('bNameOp',   '--b-name-op',   '', 100);
+
+/* B 区单位 */
+bindRange('bOrgSize',  '--b-org-size',  'mm');
+bindRange('bOrgLS',    '--b-org-ls',    'em');
+bindRange('bOrgLH',    '--b-org-lh',    '');
+bindRange('bOrgOp',    '--b-org-op',    '', 100);
+bindRange('bOrgDx',    '--b-org-dx',    'mm');
+
+/* A 区第 3 列 */
+bindRange('aSize',     '--a-size',      'mm');
+bindRange('aLS',       '--a-ls',        'em');
+bindRange('aLH',       '--a-lh',        '');
+bindRange('aOp',       '--a-op',        '', 100);
+bindRange('aDx',       '--a-dx',        'mm');
+bindRange('aDy',       '--a-dy',        'mm');
+
+/* 位置偏移（mm，负值允许）。A 区整体与 B 区反向派生 */
+bindRange('bDx', '--b-dx', 'mm');
+bindRange('bDy', '--b-dy', 'mm');
+bindRange('bNameDx', '--b-name-dx', 'mm');
+bindRange('bNameDy', '--b-name-dy', 'mm');
+bindRange('bOrgDx',  '--b-org-dx',  'mm');
+bindRange('bOrgDy',  '--b-org-dy',  'mm');
+
+function bindFont(selectId, cssVar) {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  const apply = () => document.documentElement.style.setProperty(cssVar, FONTS[el.value] || FONTS.default);
+  el.addEventListener('change', apply);
+  apply();
+}
+bindFont('bNameFont', '--b-name-font');
+bindFont('bOrgFont',  '--b-org-font');
+bindFont('aFont',     '--a-font');
+
+document.getElementById('textColor').addEventListener('input', function () {
+  document.documentElement.style.setProperty('--text-color', this.value);
+});
+
+/* ============================================================
+ * 渲染
+ * ========================================================== */
+// 单个数据块；col3Only = 只输出第 3 列（A 区选项）
+function itemHTML(item, col3Only) {
+  if (col3Only) {
+    const t = (item.col3 || '').trim();
+    if (!t || t === '*') return '';             // 第 3 列为空或 * → 不印
+    return `<div class="item"><div class="col3">${esc(t)}</div></div>`;
+  }
+  const name = (item.name || '').trim();
+  const org = (item.org || '').trim();
+  const showOrg = !!org && org !== '*';          // 第 2 列为 * → 忽略
+  if (!name && !showOrg) return '';
+  return `<div class="item">
+      ${name ? `<div class="name">${esc(name)}</div>` : ''}
+      ${showOrg ? `<div class="org">${esc(org)}</div>` : ''}
+    </div>`;
+}
+
+function contentHTML(group, col3Only) {
+  return group.map(it => itemHTML(it, col3Only)).join('');
+}
+
+// 构造内容块；flip=true 时旋转 180°（折回后正向）
+function buildContent(html, flip) {
+  const content = document.createElement('div');
+  content.className = 'content';
+
+  const rot = document.createElement('div');
+  rot.className = 'rot' + (flip ? ' flip' : '');
+
+  const inner = document.createElement('div');
+  inner.className = 'content-inner';
+  inner.innerHTML = html;
+
+  rot.appendChild(inner);
+  content.appendChild(rot);
+  return content;
+}
+
+function buildPage(group, key, label, index){
+  const slot = document.createElement('div');
+  slot.className = 'page-slot';
+
+  const page = document.createElement('div');
+  page.className = 'page';
+  page.dataset.key = key;
+  page.dataset.label = label || '';
+  page.dataset.index = String(index);
+  if (showGuides.checked) page.classList.add('guides');
+
+  // 该页的单独覆盖（只有位置变量）
+  const ov = pageOverrides.get(key);
+  if (ov) Object.keys(ov).forEach(k => page.style.setProperty(k, ov[k]));
+
+  // 背景图
+  if (bgUrl){
+    const img = document.createElement('img');
+    img.className = 'page-bg';
+    img.src = bgUrl;
+    img.alt = '';
+    page.appendChild(img);
+  }
+
+  const mode = aMode.value;
+
+  // ---- A 区（回折面）----
+  const a = document.createElement('div');
+  a.className = 'region region-a';
+  if (mode === 'none'){
+    a.style.display = 'none';
+  } else {
+    a.appendChild(buildContent(
+      contentHTML(group, mode === 'col3'),
+      mode !== 'upright'
+    ));
+  }
+
+  // ---- B 区（数据面）----
+  const b = document.createElement('div');
+  b.className = 'region region-b';
+  b.appendChild(buildContent(contentHTML(group, false), false));
+
+  page.append(a, b);
+
+  // C 区页码：仅预览显示，打印时由 CSS 隐藏
+  const pn = document.createElement('div');
+  pn.className = 'page-num';
+  pn.textContent = String(index + 1);
+  page.appendChild(pn);
+
+  if (key === selectedKey) page.classList.add('selected');
+  if (pageOverrides.has(key)) page.classList.add('overridden');
+  page.addEventListener('click', () => selectPage(page));
+
+  slot.appendChild(page);
+  return slot;
+}
+
+// 单页指纹：名字|单位|第3列
+function fingerprint(row) {
+  return [row.name, row.org, row.col3].join('|');
+}
+
+function render(){
+  preview.innerHTML = '';
+
+  // A 区第 3 列样式只在 col3 模式生效，其余模式弱化提示
+  aStyleField.classList.toggle('dim', aMode.value !== 'col3');
+
+  if (!rows.length && !bgUrl){
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.innerHTML = '<span>📄</span>请在左侧导入 CSV 文件<br>（可再导入一张 JPG 作为背景）';
+    preview.appendChild(empty);
+    clearSelection();
+    return;
+  }
+
+  let groups, keys, labels;
+  if (!rows.length){
+    groups = [[]];                             // 只有背景图
+    keys   = ['__bg__'];
+    labels = ['背景'];
+  } else if (pageMode.value === 'perRow'){
+    groups = rows.map(r => [r]);               // 每条数据一页
+    const used = new Map();                    // 指纹去重（同名同单位时追加序号）
+    keys = rows.map(r => {
+      const base = fingerprint(r);
+      const n = (used.get(base) || 0) + 1;
+      used.set(base, n);
+      return n > 1 ? base + '#' + n : base;
+    });
+    labels = rows.map(r => r.name || r.col3 || '');
+  } else {
+    groups = [rows];                           // 全部放一页
+    keys   = ['__all__'];
+    labels = ['全部数据'];
+  }
+
+  const frag = document.createDocumentFragment();
+  groups.forEach((g, i) => frag.appendChild(buildPage(g, keys[i], labels[i], i)));
+  preview.appendChild(frag);
+
+  // 重建后按指纹恢复选中态；找不到则清空
+  let found = null;
+  preview.querySelectorAll('.page').forEach(p => {
+    if (selectedKey && p.dataset.key === selectedKey) found = p;
+  });
+  if (selectedKey && !found) {
+    selectedEl = null;
+    selectedKey = null;
+    perPageMode = false;
+    peEnable.checked = false;
+  } else if (found) {
+    selectedEl = found;
+    found.classList.add('selected');
+  }
+
+  updatePageEditUI();
+  layoutPages();
+}
+
+/* 计算缩放，让 A4 适配预览区 */
+function layoutPages(){
+  const slots = preview.querySelectorAll('.page-slot');
+  if (!slots.length) return;
+
+  const availW = Math.max(120, preview.clientWidth  - 48);
+  const availH = Math.max(160, preview.clientHeight - 48);
+
+  const pageW = 210 * PX_PER_MM;
+  const pageH = 297 * PX_PER_MM;
+
+  let s = Math.min(availW / pageW, availH / pageH, 1.25);
+  if (!isFinite(s) || s <= 0) s = 0.3;
+
+  slots.forEach(slot => {
+    slot.style.width  = (pageW * s) + 'px';
+    slot.style.height = (pageH * s) + 'px';
+    const page = slot.firstElementChild;
+    if (page) page.style.transform = `scale(${s})`;
+  });
+}
+
+/* ============================================================
+ * 文件导入
+ * ========================================================== */
+function handleCSV(text, filename){
+  text = text.replace(/^\uFEFF/, '');
+  let table = parseCSV(text);
+
+  if (!table.length){
+    csvInfo.textContent = 'CSV 内容为空';
+    csvInfo.className = 'hint err';
+    return;
+  }
+  if (detectHeader(table[0])) table = table.slice(1);
+
+  rows = table
+    .map(r => ({
+      name: (r[0] ?? '').trim(),
+      org:  (r[1] ?? '').trim(),
+      col3: (r[2] ?? '').trim()
+    }))
+    .filter(r => r.name || r.org || r.col3);
+
+  if (!rows.length){
+    csvInfo.textContent = '没有解析到有效数据';
+    csvInfo.className = 'hint err';
+  } else {
+    const withCol3 = rows.filter(r => r.col3 && r.col3 !== '*').length;
+    csvInfo.textContent = `✔ ${filename} — 共 ${rows.length} 条数据` +
+      (withCol3 ? `，含第3列 ${withCol3} 条` : '');
+    csvInfo.className = 'hint ok';
+  }
+  render();
+}
+
+csvFile.addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  csvInfo.textContent = '读取中…';
+  csvInfo.className = 'hint';
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = String(ev.target.result || '');
+    // 出现替换字符 → 很可能是 GBK 编码（Excel 导出常见），重新按 GBK 读
+    if (/\uFFFD/.test(text)){
+      const r2 = new FileReader();
+      r2.onload = ev2 => handleCSV(String(ev2.target.result || ''), file.name);
+      r2.onerror = () => handleCSV(text, file.name);
+      try { r2.readAsText(file, 'GBK'); }
+      catch { handleCSV(text, file.name); }
+    } else {
+      handleCSV(text, file.name);
+    }
+  };
+  reader.onerror = () => {
+    csvInfo.textContent = '读取失败';
+    csvInfo.className = 'hint err';
+  };
+  reader.readAsText(file, 'UTF-8');
+});
+
+bgFile.addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  if (bgUrl) URL.revokeObjectURL(bgUrl);
+  bgUrl = URL.createObjectURL(file);
+
+  bgInfo.textContent = `✔ ${file.name}`;
+  bgInfo.className = 'hint ok';
+
+  render();
+});
+
+/* ============================================================
+ * 配置备份：导出 / 导入 JSON（全局样式 + 各页单独调整）
+ * 不含 CSV 数据与背景图（那两个本身是文件，直接带走即可）
+ * ========================================================== */
+const CFG_TYPE = 'paizuo-print-config';
+const CFG_RANGES = [
+  'bNameSize', 'bNameLS', 'bNameLH', 'bNameOp',
+  'bOrgSize',  'bOrgLS',  'bOrgLH',  'bOrgOp',
+  'aSize',     'aLS',     'aLH',     'aOp',   'aDx', 'aDy',
+  'bDx',       'bDy',     'bNameDx', 'bNameDy', 'bOrgDx', 'bOrgDy'
+];
+const CFG_SELECTS = ['bNameFont', 'bOrgFont', 'aFont'];
+
+function collectConfig(){
+  const controls = {};
+  CFG_RANGES.forEach(id => {
+    const r = document.getElementById(id);
+    if (r) controls[id] = r.value;
+  });
+  CFG_SELECTS.forEach(id => {
+    const s = document.getElementById(id);
+    if (s) controls[id] = s.value;
+  });
+  const colorEl = document.getElementById('textColor');
+  if (colorEl) controls.textColor = colorEl.value;
+
+  const overrides = {};
+  pageOverrides.forEach((v, k) => { overrides[k] = Object.assign({}, v); });
+
+  return {
+    type: CFG_TYPE,
+    version: 1,
+    savedAt: new Date().toISOString(),
+    global: {
+      aMode: aMode.value,
+      pageMode: pageMode.value,
+      controls: controls
+    },
+    pageOverrides: overrides
+  };
+}
+
+// 把配置写回控件；写入通过派发事件走原有绑定，保证 CSS 变量同步
+function applyConfig(cfg){
+  clearSelection();                 // 先退出单页模式，确保写入全局
+
+  pageOverrides.clear();
+  const po = cfg.pageOverrides;
+  if (po && typeof po === 'object') {
+    Object.keys(po).forEach(k => {
+      const o = po[k];
+      if (!o || typeof o !== 'object') return;
+      const clean = {};
+      Object.keys(o).forEach(v => { if (OFFSET_VARS.includes(v)) clean[v] = String(o[v]); });
+      if (Object.keys(clean).length) pageOverrides.set(k, clean);
+    });
+  }
+
+  const g = cfg.global || {};
+  if (g.aMode && [...aMode.options].some(o => o.value === g.aMode)) aMode.value = g.aMode;
+  if (g.pageMode && [...pageMode.options].some(o => o.value === g.pageMode)) pageMode.value = g.pageMode;
+
+  const c = g.controls || {};
+
+  const colorEl = document.getElementById('textColor');
+  if (colorEl && /^#[0-9a-fA-F]{6}$/.test(String(c.textColor || ''))) {
+    colorEl.value = c.textColor;
+    colorEl.dispatchEvent(new Event('input'));
+  }
+
+  CFG_RANGES.forEach(id => {
+    if (!(id in c)) return;
+    const r = document.getElementById(id);
+    if (!r) return;
+    const v = Number(c[id]);
+    if (!isFinite(v)) return;
+    r.value = v;                    // 超出 min/max 时浏览器自动夹紧
+    r.dispatchEvent(new Event('input'));
+  });
+
+  CFG_SELECTS.forEach(id => {
+    if (!(id in c)) return;
+    const s = document.getElementById(id);
+    if (!s) return;
+    if ([...s.options].some(o => o.value === c[id])) {
+      s.value = c[id];
+      s.dispatchEvent(new Event('change'));
+    }
+  });
+
+  render();
+}
+
+function pad2(n){ return String(n).padStart(2, '0'); }
+
+cfgExport.addEventListener('click', () => {
+  if (!isAdmin) return;
+  const json = JSON.stringify(collectConfig(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  a.href = url;
+  a.download = 'paizuo-print-config-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+               '-' + pad2(d.getHours()) + pad2(d.getMinutes()) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  const n = Object.keys(collectConfig().pageOverrides).length;
+  cfgInfo.textContent = '✔ 已导出配置' + (n ? `（含 ${n} 页单独调整）` : '');
+  cfgInfo.className = 'hint ok';
+});
+
+cfgFile.addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const cfg = JSON.parse(String(ev.target.result || ''));
+      if (!cfg || cfg.type !== CFG_TYPE) throw new Error('不是本页面的配置文件');
+      applyConfig(cfg);
+      const n = Object.keys(cfg.pageOverrides || {}).length;
+      cfgInfo.textContent = `✔ ${file.name} — 配置已导入` +
+        (n ? `，含 ${n} 页单独调整` : '') +
+        (rows.length ? '' : '（未导入 CSV，页面未渲染）');
+      cfgInfo.className = 'hint ok';
+    } catch (err) {
+      cfgInfo.textContent = '导入失败：' + (err.message || 'JSON 格式错误');
+      cfgInfo.className = 'hint err';
+    }
+  };
+  reader.onerror = () => {
+    cfgInfo.textContent = '读取文件失败';
+    cfgInfo.className = 'hint err';
+  };
+  reader.readAsText(file, 'UTF-8');
+  e.target.value = '';              // 允许重复导入同一个文件
+});
+
+/* ============================================================
+ * 选项联动
+ * ========================================================== */
+aMode.addEventListener('change', render);
+pageMode.addEventListener('change', render);
+showGuides.addEventListener('change', render);
+
+/* ============================================================
+ * 打印
+ * ========================================================== */
+printBtn.addEventListener('click', () => {
+  if (!isAdmin) return;
+  if (!rows.length && !bgUrl){
+    alert('请先导入 CSV 文件（或背景图）再打印。');
+    return;
+  }
+  window.print();
+});
+
+/* ============================================================
+ * 初始化
+ * ========================================================== */
+window.addEventListener('resize', layoutPages);
+window.addEventListener('beforeprint', () => {
+  // 打印前把辅助线状态同步一次，避免样式残留
+  document.querySelectorAll('.page').forEach(p => {
+    if (!showGuides.checked) p.classList.remove('guides');
+  });
+});
+
+render();
+</script>
+</body>
+</html>

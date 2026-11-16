@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>登录 · 排座系统</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f1f5f9; color: #0f172a;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    background: #fff; border-radius: 16px; padding: 32px 28px;
+    width: 340px; max-width: calc(100vw - 32px);
+    box-shadow: 0 10px 30px rgba(15,23,42,.10), 0 2px 6px rgba(15,23,42,.06);
+  }
+  .card h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: .5px; }
+  .card .sub { font-size: 12px; color: #94a3b8; margin-bottom: 22px; line-height: 1.7; }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+  input[type="password"] {
+    width: 100%; border: 1px solid #cbd5e1; border-radius: 10px;
+    padding: 11px 12px; font-size: 15px; font-family: inherit;
+    background: #fff; color: #0f172a; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input[type="password"]:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  .err {
+    color: #b91c1c; font-size: 12px; line-height: 1.6;
+    min-height: 34px; margin: 10px 0 4px;
+  }
+  .btn {
+    width: 100%; border: none; border-radius: 10px;
+    background: #2563eb; color: #fff; font-weight: 600;
+    padding: 12px; font-size: 14px; font-family: inherit; cursor: pointer;
+    transition: background .15s;
+  }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { background: #c7cdd6; cursor: not-allowed; }
+  .roles { margin-top: 18px; font-size: 11px; color: #94a3b8; line-height: 1.8; border-top: 1px solid #f1f5f9; padding-top: 14px; }
+  .roles b { color: #64748b; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>排座系统</h1>
+  <div class="sub">请输入访问口令登录</div>
+  <div class="field">
+    <label for="pwdInput">访问口令</label>
+    <input type="password" id="pwdInput" autocomplete="off" autofocus>
+  </div>
+  <div class="err" id="loginErr"></div>
+  <button class="btn" id="btnLogin" disabled>登录</button>
+  <div class="roles">
+	  <!-- <b></b>输入拿到的密码直接登录<br> -->
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- 纯 JS SHA-256（HTTP 非安全上下文无 crypto.subtle，须自带实现） ----------
+  // 输入为"字节字符串"（每个 char 代表一个 0–255 字节），UTF-8 编码由调用方完成
+  function sha256(ascii) {
+    function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+    var mathPow = Math.pow;
+    var maxWord = mathPow(2, 32);
+    var i, j;
+    var result = '';
+    var words = [];
+    var asciiBitLength = ascii.length * 8;
+    var hash = [];
+    var k = [];
+    var primeCounter = 0;
+    var isComposite = {};
+    for (var candidate = 2; primeCounter < 64; candidate++) {
+      if (!isComposite[candidate]) {
+        for (i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+        hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+        k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+      }
+    }
+    ascii += '\x80';
+    while (ascii.length % 64 - 56) ascii += '\x00';
+    for (i = 0; i < ascii.length; i++) {
+      j = ascii.charCodeAt(i);
+      if (j >> 8) return '';
+      words[i >> 2] |= j << ((3 - i) % 4) * 8;
+    }
+    words[words.length] = ((asciiBitLength / maxWord) | 0);
+    words[words.length] = (asciiBitLength);
+    for (j = 0; j < words.length;) {
+      var w = words.slice(j, j += 16);
+      var oldHash = hash;
+      hash = hash.slice(0, 8);
+      for (i = 0; i < 64; i++) {
+        var w15 = w[i - 15], w2 = w[i - 2];
+        var a = hash[0], e = hash[4];
+        var temp1 = hash[7]
+          + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+          + ((e & hash[5]) ^ ((~e) & hash[6]))
+          + k[i]
+          + (w[i] = (i < 16) ? w[i] : (
+              w[i - 16]
+              + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+              + w[i - 7]
+              + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+            ) | 0);
+        var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+          + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+        hash = [(temp1 + temp2) | 0].concat(hash);
+        hash[4] = (hash[4] + temp1) | 0;
+      }
+      for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+    for (i = 0; i < 8; i++) {
+      for (j = 3; j + 1; j--) {
+        var b = (hash[i] >> (j * 8)) & 255;
+        result += ((b < 16) ? 0 : '') + b.toString(16);
+      }
+    }
+    return result;
+  }
+
+  // 运行自检：实现有误则禁止登录，避免把错误 hash 发给服务器
+  (function selfTest() {
+    var ok = sha256('abc') === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' &&
+             sha256('') === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    if (!ok) {
+      $('loginErr').textContent = '浏览器脚本异常，无法安全登录（SHA-256 自检失败）';
+      throw new Error('sha256 self-test failed');
+    }
+  })();
+
+  // ---------- 会话 ----------
+  var AUTH_KEY = 'paizuo.auth';
+
+  function getAuth() {
+    try {
+      var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      if (a && a.token && (a.role === 'admin' || a.role === 'viewer')) return a;
+    } catch (e) {}
+    return null;
+  }
+
+  // next 参数只允许站内路径，防开放跳转
+  function safeNext() {
+    var p = null;
+    try { p = new URLSearchParams(location.search).get('next'); } catch (e) {}
+    if (p && p.charAt(0) === '/' && p.charAt(1) !== '/' && p.charAt(1) !== '\\' &&
+        p.indexOf('/login.html') !== 0) return p;
+    return '/index.html';
+  }
+
+  if (getAuth()) { location.replace(safeNext()); return; }
+
+  // ---------- 登录流程 ----------
+  var SALT = '';
+  var busy = false;
+
+  function setErr(msg) { $('loginErr').textContent = msg || ''; }
+
+  function doLogin() {
+    if (busy || !SALT) return;
+    var pwd = $('pwdInput').value;
+    setErr('');
+    if (!pwd) { setErr('请输入口令'); return; }
+
+    busy = true;
+    $('btnLogin').disabled = true;
+    // 密码不明文传输：提交 sha256(salt + password)
+    var hash = sha256(unescape(encodeURIComponent(SALT + pwd)));
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hash: hash })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res.ok) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ token: res.token, role: res.role }));
+        location.replace(safeNext());
+        return;
+      }
+      setErr(res.msg || '登录失败');
+      busy = false;
+      $('btnLogin').disabled = false;
+      $('pwdInput').value = '';
+      $('pwdInput').focus();
+    }).catch(function () {
+      setErr('无法连接服务器');
+      busy = false;
+      $('btnLogin').disabled = false;
+    });
+  }
+
+  // 取盐（公开信息），成功后才允许提交
+  fetch('/api/auth-info').then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok || !d.salt) throw new Error('no salt');
+    SALT = d.salt;
+    $('btnLogin').disabled = false;
+    $('pwdInput').focus();
+  }).catch(function () {
+    setErr('无法连接服务器，请确认服务已启动并通过 nginx 访问');
+  });
+
+  $('btnLogin').addEventListener('click', doLogin);
+  $('pwdInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') doLogin();
+  });
+})();
+</script>
+</body>
+</html>

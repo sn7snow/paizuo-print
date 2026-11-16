@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会议餐位</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f1f5f9; color: #0f172a; -webkit-font-smoothing: antialiased;
+  }
+  [hidden] { display: none !important; }
+  .app { display: flex; min-height: 100vh; align-items: stretch; }
+  .topbar {
+    position: fixed; top: 14px; right: 18px; z-index: 60;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .home-link {
+    display: inline-flex; align-items: center; padding: 8px 14px;
+    border: 1px solid #bfdbfe; border-radius: 10px;
+    color: #1d4ed8; background: #eff6ff; font-size: 14px; text-decoration: none;
+  }
+  .home-link:hover { background: #dbeafe; }
+  button, .file-btn {
+    font-family: inherit; font-size: 14px; border-radius: 10px; border: 1px solid transparent;
+    padding: 10px 16px; cursor: pointer; transition: filter .15s, background .15s; white-space: nowrap;
+  }
+  button:active, .file-btn:active { filter: brightness(.95); }
+  .btn-login {
+    background: #fff; border-color: #cbd5e1; color: #334155; padding: 8px 18px;
+    box-shadow: 0 1px 3px rgba(15,23,42,.08);
+  }
+  .btn-login.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .role-badge {
+    font-size: 12px; color: #64748b; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 12px;
+  }
+  .panel {
+    width: 380px; flex-shrink: 0; background: #fff; border-right: 1px solid #e2e8f0;
+    padding: 24px 20px; display: flex; flex-direction: column; gap: 16px;
+    position: sticky; top: 0; height: 100vh; overflow: hidden;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; }
+  .brand h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+  .brand span { color: #94a3b8; font-size: 12px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; font-weight: 600; color: #334155; }
+  .field .desc { color: #94a3b8; font-size: 11px; line-height: 1.6; }
+  input[type="number"], input[type="text"], input[type="password"], textarea {
+    width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px;
+    font-size: 14px; font-family: inherit; background: #fff; color: #0f172a; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  textarea { resize: vertical; font-size: 13px; min-height: 250px; line-height: 1.7; }
+  #seatCount { height: 128px; min-height: 128px; line-height: 1.6; resize: vertical; }
+  .roster-wrap {
+    display: flex; align-items: stretch;
+    flex: 0 0 350px; height: 350px; max-height: 350px; min-height: 0;
+    border: 1px solid #cbd5e1; border-radius: 10px; background: #fff;
+    overflow: hidden; transition: border-color .15s, box-shadow .15s;
+  }
+  .roster-wrap:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  .line-nums {
+    flex: 0 0 auto; min-width: 38px; padding: 10px 8px;
+    text-align: right; overflow: hidden; user-select: none;
+    font: 13px/22px ui-monospace, Menlo, Consolas, monospace;
+    color: #94a3b8; background: #f8fafc; border-right: 1px solid #e2e8f0;
+  }
+  .line-nums > div { height: 22px; line-height: 22px; }
+  #roster {
+    flex: 1; min-width: 0; width: 0; height: 350px; max-height: 350px;
+    border: none; border-radius: 0; resize: none; overflow-y: auto;
+    box-shadow: none !important; min-height: 0;
+    line-height: 22px; font-size: 13px; padding: 10px 12px;
+  }
+  .btn-primary { width: 100%; background: #2563eb; color: #fff; font-weight: 600; padding: 12px; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-ghost, .file-btn { background: #f1f5f9; color: #334155; border-color: #e2e8f0; }
+  .btn-ghost:hover, .file-btn:hover { background: #e2e8f0; }
+  .file-btn { display: inline-flex; align-items: center; align-self: flex-start; font-size: 13px; padding: 8px 14px; }
+  .file-btn input { display: none; }
+  .show-position-numbers {
+    display: flex; align-items: center; gap: 8px; align-self: flex-start;
+    color: #475569; font-size: 13px; cursor: pointer;
+  }
+  .show-position-numbers input { width: auto; margin: 0; accent-color: #2563eb; }
+  .error {
+    display: none; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.6;
+  }
+  .error.show { display: block; }
+  .result { flex: 1; padding: 24px; min-width: 0; }
+  .summary {
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+    margin-bottom: 16px; padding-right: 180px; color: #64748b; font-size: 13px;
+  }
+  .summary b { color: #0f172a; }
+  .search-box { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .meeting-link {
+    display: inline-flex; align-items: center; padding: 6px 10px;
+    border: 1px solid #bfdbfe; border-radius: 8px; color: #1d4ed8;
+    background: #eff6ff; text-decoration: none; font-size: 13px; white-space: nowrap;
+  }
+  .meeting-link:hover { background: #dbeafe; }
+  .search-box input {
+    width: 180px; padding: 6px 10px; font-size: 13px; border-radius: 8px;
+  }
+  .search-box button { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+  .search-msg {
+    color: #b45309; font-size: 12px; max-width: 260px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .seat-grid-wrap { width: 100%; overflow-x: auto; text-align: center; margin-bottom: 16px; }
+  .seat-grid {
+    display: inline-grid; grid-template-columns: repeat(var(--seat-columns, 8), minmax(72px, 100px));
+    gap: 10px; align-items: stretch; padding: 4px;
+  }
+  .layout-title { margin: 0 0 8px; color: #64748b; font-size: 12px; text-align: center; }
+  .seat {
+    min-height: 68px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; padding: 8px; overflow: hidden;
+    border: 1px solid #cbd5e1; border-radius: 10px; background: #fff;
+    text-align: center; scroll-margin-top: 72px; cursor: default;
+  }
+  .seat.editable { cursor: pointer; }
+  .seat.selected { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 3px rgba(37,99,235,.2); }
+  .seat.empty { background: #f8fafc; border-style: dashed; }
+  .seat.excluded {
+    border: 2px solid #2563eb; background: #eff6ff; cursor: default;
+  }
+  .seat .number { color: #94a3b8; font-size: 11px; }
+  .hide-position-numbers .seat .number { display: none; }
+  .seat .name { max-width: 100%; color: #1e293b; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .seat .remark { max-width: 100%; color: #64748b; font-size: 11px; overflow-wrap: anywhere; }
+  .seat.found { outline: 3px solid #dc2626; background: #fef2f2; }
+  .placeholder { padding: 80px 20px; color: #94a3b8; font-size: 14px; line-height: 1.8; text-align: center; }
+  .empty-nav { display: flex; justify-content: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  @media (max-width: 860px) {
+    .app { flex-direction: column; }
+    .panel { width: auto; height: auto; position: static; overflow: visible; border-right: none; border-bottom: 1px solid #e2e8f0; }
+    .result { padding: 72px 16px 16px; }
+    .summary { padding-right: 0; }
+    .search-box { margin-left: 0; flex-wrap: wrap; }
+  }
+  @media (min-width: 861px) and (max-height: 720px) {
+    .panel { overflow-y: auto; }
+  }
+  @media print {
+    .panel, .topbar, .search-box { display: none !important; }
+    .seat .number { display: none !important; }
+    .app { display: block; }
+    .result { padding: 0; }
+    .summary { padding-right: 0; }
+    .seat-grid { grid-template-columns: repeat(var(--seat-columns, 8), minmax(72px, 100px)); }
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <!--<a class="home-link" href="/index.html">餐位</a> -->
+  <span class="role-badge" id="roleBadge"></span>
+  <button class="btn-login" id="btnLogout">退出</button>
+</div>
+<div class="app">
+  <aside class="panel" id="panel" hidden>
+    <div class="brand"><h1>会议餐位</h1><span>管理</span></div>
+    <div class="field">
+      <label for="seatCount">座位布局（行数*列数）</label>
+      <textarea id="seatCount" spellcheck="false" placeholder="每行一个布局，例如：&#10;5*8:2,5&#10;3*6">5*8</textarea>
+      <div class="desc">每行按“行数*列数:排除位置”填写，例如 <code>2*3:2,5</code> 表示 2 行 3 列，并排除第 2、5 个位置。排除位保留蓝框占位，不计入可用位置数。</div>
+    </div>
+    <div class="field">
+      <label for="roster">名单</label>
+      <div class="roster-wrap">
+        <div class="line-nums" id="lineNums" aria-hidden="true"></div>
+        <textarea id="roster" spellcheck="false" placeholder="一行一人，可用逗号添加备注：&#10;张三,主宾&#10;李四&#10;// 备注行会被忽略&#10;*王五,预留位"></textarea>
+      </div>
+      <div class="desc">名单顺序对应位置顺序。格式与圆桌排座一致：名字,备注；含 // 的行忽略；行首加 * 表示占位但不显示内容。</div>
+      <label class="file-btn">导入 txt<input type="file" id="fileInput" accept=".txt,text/plain"></label>
+      <label class="show-position-numbers"><input type="checkbox" id="showPositionNumbers" checked> 显示座位位置编号（位置 n）</label>
+    </div>
+    <div class="error" id="errorBox"></div>
+    <button class="btn-primary" id="btnGen">生成排座（保存数据）</button>
+  </aside>
+  <main class="result" id="result"><div class="placeholder">正在读取餐位数据…</div></main>
+</div>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var LEGACY_STORAGE_KEY = 'huiyi-layout-v1';
+
+  // ---------- 登录会话 ----------
+  var AUTH_KEY = 'paizuo.auth';
+  function getAuth() {
+    try {
+      var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      if (a && a.token && (a.role === 'admin' || a.role === 'viewer')) return a;
+    } catch (e) {}
+    return null;
+  }
+  function clearAuth() { localStorage.removeItem(AUTH_KEY); }
+  function gotoLogin() {
+    location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+  }
+  function handle401() { clearAuth(); gotoLogin(); }
+  // 统一 API 请求：带 token，401 时清除会话并跳转登录页
+  function apiFetch(url, opts) {
+    opts = opts || {};
+    var a = getAuth();
+    var headers = opts.headers || {};
+    if (a) headers['X-Auth-Token'] = a.token;
+    opts.headers = headers;
+    return fetch(url, opts).then(function (r) {
+      if (r.status === 401) {
+        handle401();
+        var err = new Error('登录已失效');
+        err.authRedirected = true;
+        throw err;
+      }
+      return r;
+    });
+  }
+
+  var auth = getAuth();
+  if (!auth) { gotoLogin(); return; }
+  var isAdmin = auth.role === 'admin';
+  var state = { rows: 0, columns: 0, layouts: [], seats: 0, available: 0, excluded: [], slots: [], rosterLines: [], selected: null, searchText: '' };
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function parseRoster(text, layout) {
+    var rosterSlots = [];
+    text.split(/\r?\n/).forEach(function (line) {
+      var value = line.trim();
+      if (!value || value.indexOf('//') >= 0) return;
+      var hidden = value.charAt(0) === '*';
+      if (hidden) value = value.slice(1).trim();
+      var parts = value.split(/[,，]/);
+      rosterSlots.push({
+        name: (parts[0] || '').trim(),
+        remark: parts.slice(1).join('，').trim(),
+        hidden: hidden
+      });
+    });
+    if (rosterSlots.length > layout.available) {
+      throw new Error('名单共 ' + rosterSlots.length + ' 条（含 * 占位），超过可用位置数 ' + layout.available);
+    }
+    while (rosterSlots.length < layout.available) rosterSlots.push({ name: '', remark: '', hidden: false });
+    var slots = [];
+    var nextRosterSlot = 0;
+    for (var i = 0; i < layout.total; i++) {
+      slots.push(layout.excluded[i] ? null : rosterSlots[nextRosterSlot++]);
+    }
+    return slots;
+  }
+
+  function parseSingleLayout(value) {
+    var match = /^\s*(\d+)\s*(?:\*|x|X|×)\s*(\d+)\s*(?::\s*(.*))?$/.exec(value);
+    if (!match) throw new Error('座位布局请按“行数*列数”填写，例如 5*8');
+    var rows = Number(match[1]);
+    var columns = Number(match[2]);
+    var total = rows * columns;
+    if (!Number.isInteger(rows) || !Number.isInteger(columns) ||
+        rows < 1 || columns < 1 || rows > 50 || columns > 50 || total > 500) {
+      throw new Error('行数和列数须为 1–50 的整数，位置总数不能超过 500');
+    }
+    var excluded = [];
+    var excludedIndexes = Object.create(null);
+    if (match[3] !== undefined) {
+      if (!match[3].trim()) throw new Error('冒号后请填写要排除的位置编号，例如 2*3:2,5');
+      match[3].split(/[,，]/).forEach(function (part) {
+        var number = Number(part.trim());
+        if (!/^\d+$/.test(part.trim()) || !Number.isInteger(number) || number < 1 || number > total) {
+          throw new Error('排除位置编号须在 1–' + total + ' 之间');
+        }
+        if (excludedIndexes[number]) throw new Error('排除位置编号 ' + number + ' 重复');
+        excludedIndexes[number] = true;
+        excluded.push(number - 1);
+      });
+    }
+    return {
+      rows: rows, columns: columns, total: total,
+      available: total - excluded.length,
+      excluded: Array.from({ length: total }, function (_, index) { return !!excludedIndexes[index + 1]; })
+    };
+  }
+
+  function parseLayout(value) {
+    var lines = String(value).split(/\r?\n/);
+    var layouts = [];
+    var total = 0;
+    var available = 0;
+    var excluded = [];
+    lines.forEach(function (line, index) {
+      if (!line.trim()) return;
+      var layout;
+      try {
+        layout = parseSingleLayout(line);
+      } catch (err) {
+        throw new Error('第 ' + (index + 1) + ' 行：' + err.message);
+      }
+      if (total + layout.total > 500) {
+        throw new Error('所有布局的位置总数不能超过 500');
+      }
+      layout.start = total;
+      layouts.push(layout);
+      total += layout.total;
+      available += layout.available;
+      excluded = excluded.concat(layout.excluded);
+    });
+    if (!layouts.length) throw new Error('请至少填写一行座位布局，例如 5*8');
+    return {
+      rows: layouts.length === 1 ? layouts[0].rows : layouts.length,
+      columns: layouts.length === 1 ? layouts[0].columns : 0,
+      layouts: layouts,
+      total: total,
+      available: available,
+      excluded: excluded
+    };
+  }
+
+  function updateLineNums() {
+    var count = $('roster').value.split(/\r?\n/).length;
+    var html = '';
+    for (var i = 1; i <= count; i++) html += '<div>' + i + '</div>';
+    $('lineNums').innerHTML = html;
+    $('lineNums').scrollTop = $('roster').scrollTop;
+  }
+
+  function getRosterIndexes() {
+    var indexes = [];
+    state.slots.forEach(function (slot, index) {
+      if (slot !== null) indexes.push(index);
+    });
+    return indexes;
+  }
+
+  function serializeSlot(slot) {
+    var text = slot.name || '';
+    if (slot.remark) text += ',' + slot.remark;
+    if (!text) return '*';
+    return (slot.hidden ? '*' : '') + text;
+  }
+
+  function rebuildRoster() {
+    var lines = state.rosterLines;
+    var output = [];
+    var rosterIndexes = getRosterIndexes();
+    var slotIndex = 0;
+    lines.forEach(function (line) {
+      var trimmed = line.trim();
+      if (!trimmed) {
+        output.push('');
+      } else if (trimmed.indexOf('//') >= 0) {
+        output.push(line);
+      } else {
+        var physicalIndex = rosterIndexes[slotIndex];
+        output.push(serializeSlot(state.slots[physicalIndex] || { name: '', remark: '', hidden: false }));
+        slotIndex++;
+      }
+    });
+    var lastUsed = -1;
+    rosterIndexes.forEach(function (physicalIndex, index) {
+      var slot = state.slots[physicalIndex];
+      if (slot && (slot.name || slot.remark || slot.hidden)) lastUsed = index;
+    });
+    while (slotIndex <= lastUsed) {
+      var nextPhysicalIndex = rosterIndexes[slotIndex];
+      output.push(serializeSlot(state.slots[nextPhysicalIndex] || { name: '', remark: '', hidden: false }));
+      slotIndex++;
+    }
+    return output.join('\n');
+  }
+
+  function saveData() {
+    if (!isAdmin) return Promise.resolve(false);
+    return apiFetch('/api/huiyi-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        seats: $('seatCount').value,
+        roster: $('roster').value
+      })
+    }).then(function (response) {
+      return response.json().then(function (data) {
+        if (!response.ok || !data.ok) throw new Error(data.msg || '保存失败');
+        return true;
+      });
+    }).catch(function (err) {
+      if (err && err.authRedirected) return false;
+      showError('保存失败：' + (err.message || '无法连接服务器'));
+      return false;
+    });
+  }
+
+  function loadData() {
+    return apiFetch('/api/huiyi-data').then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    }).then(function (data) {
+      if (!data.seats) {
+        if (isAdmin) {
+          var legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+          if (legacy) {
+            try {
+              var legacyData = JSON.parse(legacy);
+              var legacyCount = Number(legacyData.seats);
+              if (Number.isInteger(legacyCount) && legacyCount > 0 && legacyCount <= 500) {
+                $('seatCount').value = Math.ceil(legacyCount / 8) + '*8';
+                $('roster').value = String(legacyData.roster || '');
+                generate();
+                return;
+              }
+            } catch (err) {
+              showError('迁移旧餐位数据失败：' + err.message);
+            }
+          }
+          $('seatCount').value = '5*8';
+          $('roster').value = '';
+          updateLineNums();
+        }
+        state = { rows: 0, columns: 0, layouts: [], seats: 0, available: 0, excluded: [], slots: [], rosterLines: [], selected: null, searchText: state.searchText };
+        render();
+        return;
+      }
+      if (isAdmin) {
+        $('seatCount').value = data.seats;
+        $('roster').value = data.roster || '';
+        updateLineNums();
+      }
+      var layout = parseLayout(data.seats);
+      state.rows = layout.rows;
+      state.columns = layout.columns;
+      state.layouts = layout.layouts;
+      state.seats = layout.total;
+      state.available = layout.available;
+      state.excluded = layout.excluded;
+      state.rosterLines = String(data.roster || '').split(/\r?\n/);
+      state.slots = parseRoster(data.roster || '', layout);
+      state.selected = null;
+      render();
+    }).catch(function (err) {
+      if (err && err.authRedirected) return;
+      state = { rows: 0, columns: 0, layouts: [], seats: 0, available: 0, excluded: [], slots: [], rosterLines: [], selected: null, searchText: state.searchText };
+      $('result').innerHTML = '<div class="placeholder">读取餐位数据失败<br><span style="font-size:13px">' +
+        escapeHtml(err.message || '无法连接服务器') + '</span></div>';
+    });
+  }
+
+  function generate() {
+    if (!isAdmin) return;
+    showError('');
+    try {
+      var layout = parseLayout($('seatCount').value);
+      state.rows = layout.rows;
+      state.columns = layout.columns;
+      state.layouts = layout.layouts;
+      state.seats = layout.total;
+      state.available = layout.available;
+      state.excluded = layout.excluded;
+      state.rosterLines = $('roster').value.split(/\r?\n/);
+      updateLineNums();
+      state.slots = parseRoster($('roster').value, layout);
+      state.selected = null;
+      render();
+      saveData();
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  function render() {
+    var result = $('result');
+    result.classList.toggle('hide-position-numbers',
+    !isAdmin || !$('showPositionNumbers').checked);
+    if (!state.seats) {
+      result.innerHTML = '<div class="placeholder">' +
+        (isAdmin ? '在左侧填写座位数和名单，点击「生成排座（保存数据）」' : '暂无餐位数据') +
+        '<div class="empty-nav"><a href="/index.html" class="meeting-link">圆桌排座</a>' +
+        '<a href="/print-zhuoqian.html" class="meeting-link">三折打印</a></div>' +
+        '</div>';
+      return;
+    }
+
+    var used = state.slots.filter(function (slot) {
+      return slot !== null && (slot.name || slot.remark || slot.hidden);
+    }).length;
+    var summary = document.createElement('div');
+    summary.className = 'summary';
+    summary.innerHTML =
+      '<span><b>' + (state.layouts.length === 1 ?
+        state.layouts[0].rows + ' × ' + state.layouts[0].columns :
+        state.layouts.length + ' 个区域') + '</b></span>' +
+      '<span>共 <b>' + state.available + '</b> 个可用位置</span>' +
+      '<span>已使用 <b>' + used + '</b> 个位置</span>' +
+      (isAdmin ? '<span>点击两个位置可交换</span>' : '');
+    var search = document.createElement('span');
+    search.className = 'search-box';
+    search.innerHTML =
+      '<a href="/index.html" class="meeting-link">餐位</a>' +
+      '<a href="/huiyi.html" class="meeting-link">会议桌位</a>' +
+      '<a href="/print-zhuoqian.html" class="meeting-link">三折打印</a>' +
+      '<input type="text" id="searchInput" placeholder="输入名字定位座位" autocomplete="off" value="' +
+      escapeHtml(state.searchText) + '">' +
+      '<button type="button" class="btn-ghost" id="searchBtn">定位</button>' +
+      '<span class="search-msg" id="searchMsg"></span>';
+    summary.appendChild(search);
+
+    var grids = [];
+    state.layouts.forEach(function (layout, layoutIndex) {
+      var section = document.createElement('section');
+      
+      section.className = 'seat-section';
+      if (state.layouts.length > 1) {
+        var title = document.createElement('div');
+        title.className = 'layout-title';
+        title.textContent = '区域 ' + (layoutIndex + 1) + ' · ' + layout.rows + ' × ' + layout.columns;
+        section.appendChild(title);
+      }
+
+      var gridWrap = document.createElement('div');
+      gridWrap.className = 'seat-grid-wrap';
+      var grid = document.createElement('div');
+      grid.className = 'seat-grid';
+      grid.style.setProperty('--seat-columns', layout.columns);
+      for (var i = layout.start; i < layout.start + layout.total; i++) {
+        var isExcluded = state.excluded[i];
+        var slot = state.slots[i] || { name: '', remark: '', hidden: false };
+        var name = slot.hidden ? '' : slot.name;
+        var remark = slot.hidden ? '' : slot.remark;
+        var seat = document.createElement('div');
+        seat.className = 'seat' + (isExcluded ? ' excluded' : (name || remark ? '' : ' empty')) +
+          (!isExcluded && isAdmin ? ' editable' : '') + (state.selected === i ? ' selected' : '');
+        seat.dataset.index = i;
+        seat.title = '位置 ' + (i - layout.start + 1);
+        seat.innerHTML = '<span class="number">位置 ' + (i - layout.start + 1) + '</span>' +
+          (!isExcluded && name ? '<span class="name">' + escapeHtml(name) + '</span>' : '') +
+          (!isExcluded && remark ? '<span class="remark">' + escapeHtml(remark) + '</span>' : '');
+        seat.addEventListener('click', function (event) {
+          if (!event.currentTarget.classList.contains('excluded')) {
+            handleSeatClick(Number(event.currentTarget.dataset.index));
+          }
+        });
+        grid.appendChild(seat);
+      }
+      gridWrap.appendChild(grid);
+      section.appendChild(gridWrap);
+      grids.push(section);
+    });
+    result.replaceChildren(summary);
+    grids.forEach(function (grid) { result.appendChild(grid); });
+    $('searchBtn').addEventListener('click', locate);
+    $('searchInput').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); locate(); }
+    });
+  }
+
+  function handleSeatClick(index) {
+    if (!isAdmin) return;
+    if (state.slots[index] === null) return;
+    if (state.selected === null) {
+      state.selected = index;
+      render();
+      return;
+    }
+    if (state.selected === index) {
+      state.selected = null;
+      render();
+      return;
+    }
+    var previous = state.selected;
+    var slot = state.slots[previous];
+    state.slots[previous] = state.slots[index];
+    state.slots[index] = slot;
+    state.selected = null;
+    var roster = rebuildRoster();
+    $('roster').value = roster;
+    state.rosterLines = roster.split(/\r?\n/);
+    render();
+    saveData();
+  }
+
+  function locate() {
+    var input = $('searchInput');
+    var query = input.value.trim();
+    var message = $('searchMsg');
+    state.searchText = query;
+    message.textContent = '';
+    document.querySelectorAll('.seat.found').forEach(function (seat) {
+      seat.classList.remove('found');
+    });
+    if (!query) return;
+    var match = -1;
+    var hits = 0;
+    state.slots.forEach(function (slot, index) {
+      if (slot && slot.name.indexOf(query) >= 0) {
+        if (match < 0) match = index;
+        hits++;
+      }
+    });
+    if (match < 0) {
+      message.textContent = '未找到「' + query + '」';
+      return;
+    }
+    if (hits > 1) message.textContent = '找到 ' + hits + ' 个，已定位第一个';
+    var seat = document.querySelector('.seat[data-index="' + match + '"]');
+    if (seat) {
+      seat.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      seat.classList.add('found');
+    }
+  }
+
+  function showError(message) {
+    var box = $('errorBox');
+    box.textContent = message || '';
+    box.classList.toggle('show', !!message);
+  }
+
+  // ---------- 退出登录 ----------
+  function doLogout() {
+    var a = getAuth();
+    if (a) {
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: a.token })
+      }).catch(function () {});
+    }
+    clearAuth();
+    location.replace('/login.html');
+  }
+
+  function readTextFile(file) {
+    return file.arrayBuffer().then(function (buffer) {
+      try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '');
+      } catch (err) {
+        return new TextDecoder('gbk').decode(buffer).replace(/^\uFEFF/, '');
+      }
+    });
+  }
+
+  $('btnGen').addEventListener('click', function () { generate(false); });
+  if (isAdmin) $('panel').hidden = false;
+  $('roleBadge').textContent = isAdmin ? '管理员' : '访客 · 只读';
+  $('btnLogout').addEventListener('click', doLogout);
+  $('fileInput').addEventListener('change', function (event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    readTextFile(file).then(function (text) {
+      $('roster').value = text;
+      updateLineNums();
+      showError('');
+    }).catch(function (err) {
+      showError('读取文件失败：' + err.message);
+    });
+    event.target.value = '';
+  });
+  $('showPositionNumbers').addEventListener('change', function () {
+    $('result').classList.toggle('hide-position-numbers', !isAdmin || !this.checked);
+  });
+  $('roster').addEventListener('input', updateLineNums);
+  $('roster').addEventListener('scroll', function () {
+    $('lineNums').scrollTop = this.scrollTop;
+  });
+
+  loadData();
+})();
+</script>
+</body>
+</html>
